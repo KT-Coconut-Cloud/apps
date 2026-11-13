@@ -1,0 +1,26 @@
+{
+  "run_id": "20261111-02",
+  "reviewed_at": "2026-11-11T16:30:00+09:00",
+  "rules_version": "rules-v1.1",
+  "passed": false,
+  "checks": [
+    {
+      "item": "direct_identifier",
+      "passed": false,
+      "value": 1,
+      "reason": "crisis_signal.contact_phone 컬럼이 삭제되지 않음"
+    },
+    {
+      "item": "generalization",
+      "passed": true,
+      "value": "주소 시군구, 생년 5세 구간",
+      "reason": null
+    },
+    {
+      "item": "k_anonymity",
+      "passed": true,
+      "value": 7,
+      "reason": null
+    }
+  ]
+}

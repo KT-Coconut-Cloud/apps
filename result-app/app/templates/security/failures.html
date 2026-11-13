@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_macros.html" import breadcrumb %}
+{% block title %}검토 중단 및 탐지 현황{% endblock %}
+{% block menu %}{% with active='failures' %}{% include "security/_menu.html" %}{% endwith %}{% endblock %}
+{% block content %}
+{{ breadcrumb([('반출 관리', none), ('검토 중단 및 탐지 현황', none)]) }}
+<h1 class="rv-page-title">검토 중단 및 탐지 현황</h1>
+<p class="rv-desc">온프레미스 적정성 검토에서 막힌 사유와 AWS Macie에서 탐지된 개인정보 유형을 기간별로 봅니다. 규칙 버전별 표로 규칙을 바꾼 뒤 결과가 어떻게 달라졌는지 비교할 수 있습니다.</p>
+
+<form class="rv-filter" hx-get="/security/failures" hx-target="#failures-body" hx-push-url="true" hx-trigger="submit">
+  <div class="form-group">
+    <div class="form-tit"><label for="f-start">시작일</label></div>
+    <div class="form-conts"><input type="date" id="f-start" name="start" class="krds-input" value="{{ start }}"></div>
+  </div>
+  <div class="form-group">
+    <div class="form-tit"><label for="f-end">종료일</label></div>
+    <div class="form-conts"><input type="date" id="f-end" name="end" class="krds-input" value="{{ end }}"></div>
+  </div>
+  <div class="rv-form-actions">
+    <a href="/security/failures?start=&end=" class="krds-btn medium tertiary">전체 기간</a>
+    <button type="submit" class="krds-btn medium primary">조회</button>
+  </div>
+</form>
+
+<div id="failures-body">{% include "security/_failures_body.html" %}</div>
+{% endblock %}

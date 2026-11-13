@@ -1,0 +1,40 @@
+{
+  "accounts": [
+    {
+      "username": "policy01",
+      "name": "양희연",
+      "role": "policy",
+      "password_hash": "pbkdf2_sha256$600000$43983e857ed0d0536e70d49563a5b3a1$69dde0b4e237ab608beb9f990aa9728fa6904bfe0cf552896828ce6854341582"
+    },
+    {
+      "username": "policy02",
+      "name": "강윤모",
+      "role": "policy",
+      "password_hash": "pbkdf2_sha256$600000$a0c95b08e4a4f4fc3c6e49d60afb68a4$65d50f14a678671e6c2cc3267703d8bac740a543696d4d4d38f3474287488bf4"
+    },
+    {
+      "username": "policy03",
+      "name": "조동연",
+      "role": "policy",
+      "password_hash": "pbkdf2_sha256$600000$05300770740f882d87d091bd78215d3c$7390b52836725383f7c46849244ea8ce56be5e8d4dfdc35ba239bf4f53feaa1b"
+    },
+    {
+      "username": "security01",
+      "name": "윤민혁",
+      "role": "security",
+      "password_hash": "pbkdf2_sha256$600000$e90a495fcdb2771fbe54472ab1257ab1$7990159cb94f30f8a47b30df3a887710e8878b7860596a0deb12c37e1537b0c9"
+    },
+    {
+      "username": "security02",
+      "name": "정용희",
+      "role": "security",
+      "password_hash": "pbkdf2_sha256$600000$5e12cf20e714101e8a27c6b0d8ef9d09$c538f91040f0ea87c9b180616190bf25253244cba8c15a0bb431e7728733f9b8"
+    },
+    {
+      "username": "security03",
+      "name": "이나영",
+      "role": "security",
+      "password_hash": "pbkdf2_sha256$600000$7cf63c19bf7dc2eb3f6c20d94e820cdd$cff4c3afaabbe3962a8b963257705159be867642c26e330926f7f6e7d6ca4f09"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_macros.html" import breadcrumb %}
+{% block title %}반출 기록{% endblock %}
+{% block menu %}{% with active='runs' %}{% include "security/_menu.html" %}{% endwith %}{% endblock %}
+{% block content %}
+{{ breadcrumb([('반출 관리', none), ('반출 기록', none)]) }}
+<h1 class="rv-page-title">반출 기록</h1>
+<p class="rv-desc">회차마다 어떤 규칙으로 가명처리했고, 적정성 검토와 Macie 검사를 거쳐 반출되었는지 기록합니다. 가명정보 처리 기록으로 보관합니다.</p>
+
+<ul class="rv-stats">
+  <li><span>전체 회차</span><strong>{{ runs | length }}</strong></li>
+  <li><span>반출 완료</span><strong>{{ counts.get('반출 완료', 0) }}</strong></li>
+  <li><span>검토 중단</span><strong class="rv-danger">{{ counts.get('중단', 0) }}</strong></li>
+  <li><span>Macie 격리</span><strong class="rv-warning">{{ counts.get('격리', 0) }}</strong></li>
+</ul>
+
+<div class="krds-table-wrap">
+  <table class="tbl col data">
+    <caption>반출 회차별 실행 일시, 적용 규칙, 결과, 처리 내용</caption>
+    <thead>
+      <tr><th scope="col">반출 회차</th><th scope="col">실행 일시</th><th scope="col">적용 규칙</th><th scope="col">결과</th><th scope="col">처리 내용</th><th scope="col"><span class="sr-only">상세</span></th></tr>
+    </thead>
+    <tbody>
+      {% for r in runs %}
+      <tr>
+        <th scope="row" class="rv-mono">{{ r.run_id }}</th>
+        <td>{{ r.executed_at | dt }}</td>
+        <td class="rv-mono">{{ r.rules_version or '-' }}</td>
+        <td>{% with status=r.status %}{% include "security/_status.html" %}{% endwith %}</td>
+        <td>{{ r.progress }}</td>
+        <td><a href="/security/runs/{{ r.run_id }}" class="krds-btn small secondary">상세</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="rv-empty-cell">반출 기록이 없습니다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% from "_macros.html" import count %}
+<ul class="rv-stats">
+  <li><span>대상 위기가구</span><strong>{{ view.summary.households | num }}</strong></li>
+  <li><span>지원 연계</span><strong>{{ view.summary.linked | num }}</strong></li>
+  <li><span>연계율</span><strong>{{ view.summary.rate if view.summary.rate is not none else '-' }}%</strong></li>
+</ul>
+
+<section class="rv-section">
+  <h2 class="rv-section-title">위기정보 유형별 연계율</h2>
+  {% if view.chart.labels %}
+  <div class="rv-chart" data-chart='{"type":"bar-h","labels":{{ view.chart.labels | tojson }},"values":{{ view.chart.data | tojson }},"unit":"%"}'></div>
+  {% else %}<div class="rv-empty">표시할 수 있는 칸이 없습니다.</div>{% endif %}
+</section>
+
+<section class="rv-section">
+  <h2 class="rv-section-title">시군구, 위기정보 유형별 연계 현황</h2>
+  <p class="rv-note">주소는 가명처리 단계에서 시군구 단위로 일반화되어 반출됩니다.</p>
+  <div class="krds-table-wrap">
+    <table class="tbl col data">
+      <caption>시군구와 위기정보 유형별 대상 가구, 연계 가구, 연계율</caption>
+      <thead>
+        <tr><th scope="col">시군구</th><th scope="col">위기정보 유형</th><th scope="col" class="rv-num-h">대상 가구</th><th scope="col" class="rv-num-h">연계</th><th scope="col" class="rv-num-h">연계율</th></tr>
+      </thead>
+      <tbody>
+        {% for r in view.rows %}
+        <tr>
+          <th scope="row">{{ r.sigungu }}</th>
+          <td>{{ r.crisis_type }}</td>
+          <td class="rv-num">{{ count(r.households, min_cell) }}</td>
+          <td class="rv-num">{{ count(r.linked, min_cell) }}</td>
+          <td class="rv-num">{{ '%.1f%%' | format(r.rate) if r.rate is not none else '-' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="rv-empty-cell">조건에 맞는 결과가 없습니다.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="rv-legend">X: {{ min_cell }} 미만이라 비공개</p>
+</section>

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "_macros.html" import breadcrumb %}
+{% block title %}분석 데이터 현황{% endblock %}
+{% block menu %}{% with active='datasets' %}{% include "policy/_menu.html" %}{% endwith %}{% endblock %}
+{% block content %}
+{{ breadcrumb([('분석 데이터 현황', none)]) }}
+<h1 class="rv-page-title">분석 데이터 현황</h1>
+<p class="rv-desc">분석에는 가명처리 후 검토를 통과해 반출된 데이터만 씁니다. 반출할 때마다 그 시점의 전체 데이터가 새로 올라오며, 반출한 날짜를 데이터 기준일로 부릅니다. 분석 신청에서는 최신 기준일이 기본으로 선택됩니다.</p>
+
+{% if runs %}
+<div class="krds-table-wrap">
+  <table class="tbl col data">
+    <caption>분석에 쓸 수 있는 데이터 기준일 목록</caption>
+    <thead>
+      <tr><th scope="col">데이터 기준일</th><th scope="col">반출 회차</th><th scope="col">포함 테이블</th><th scope="col">분석 가능 시점</th><th scope="col">검토</th><th scope="col"><span class="sr-only">신청</span></th></tr>
+    </thead>
+    <tbody>
+      {% for r in runs %}
+      <tr>
+        <th scope="row">{{ run_day(r.run_id) }}{% if loop.first %} <span class="rv-badge run">최신</span>{% endif %}</th>
+        <td class="rv-mono">{{ r.run_id }}</td>
+        <td>{{ (r.tables or []) | join(', ') or '-' }}</td>
+        <td>{{ r.generated_at[:16] | replace('T', ' ') }}</td>
+        <td><span class="rv-badge ok">검토 통과</span></td>
+        <td><a href="/policy/analyses/new?run_id={{ r.run_id }}" class="krds-btn small secondary">이 기준일로 신청</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="rv-empty">분석에 쓸 수 있는 데이터가 아직 없습니다.</div>
+{% endif %}
+{% endblock %}

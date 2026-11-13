@@ -1,0 +1,59 @@
+<p class="rv-note">{% if start or end %}{{ start or '처음' }} ~ {{ end or '오늘' }} 실행분{% else %}전체 기간{% endif %}</p>
+<ul class="rv-stats">
+  <li><span>실행 회차</span><strong>{{ total }}</strong></li>
+  <li><span>검토 중단</span><strong class="rv-danger">{{ aborted }}</strong></li>
+  <li><span>Macie 격리</span><strong class="rv-warning">{{ quarantined }}</strong></li>
+</ul>
+
+<section class="rv-section">
+  <h2 class="rv-section-title">규칙 버전별 결과</h2>
+  <div class="krds-table-wrap">
+    <table class="tbl col data">
+      <caption>가명처리 규칙 버전별 실행 회차, 검토 중단, Macie 격리, 탐지 건수</caption>
+      <thead><tr><th scope="col">규칙 버전</th><th scope="col" class="rv-num-h">실행 회차</th><th scope="col" class="rv-num-h">검토 중단</th><th scope="col" class="rv-num-h">Macie 격리</th><th scope="col" class="rv-num-h">탐지 건수</th></tr></thead>
+      <tbody>
+        {% for version, row in by_rules %}
+        <tr>
+          <th scope="row" class="rv-mono">{{ version }}</th>
+          <td class="rv-num">{{ row.runs }}</td>
+          <td class="rv-num">{{ row.aborted }}</td>
+          <td class="rv-num">{{ row.quarantined }}</td>
+          <td class="rv-num">{{ row.detected }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="rv-empty-cell">이 기간에 실행한 회차가 없습니다.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="rv-grid-2 rv-section">
+  <section class="rv-section">
+    <h2 class="rv-section-title">적정성 검토 중단 사유</h2>
+    {% if reasons %}
+    <div class="rv-chart rv-chart-sm" data-chart='{"type":"bar-h","labels":{{ reasons | map(attribute=0) | list | tojson }},"values":{{ reasons | map(attribute=1) | list | tojson }},"unit":"건"}'></div>
+    <div class="krds-table-wrap">
+      <table class="tbl col data">
+        <caption>중단 사유별 건수</caption>
+        <thead><tr><th scope="col">사유</th><th scope="col" class="rv-num-h">건수</th></tr></thead>
+        <tbody>{% for label, count in reasons %}<tr><th scope="row">{{ label }}</th><td class="rv-num">{{ count }}</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    {% else %}<div class="rv-empty">중단된 회차가 없습니다.</div>{% endif %}
+  </section>
+
+  <section class="rv-section">
+    <h2 class="rv-section-title">Macie 탐지 유형</h2>
+    {% if detected %}
+    <div class="rv-chart rv-chart-sm" data-chart='{"type":"bar-h","labels":{{ detected | map(attribute=0) | list | tojson }},"values":{{ detected | map(attribute=1) | list | tojson }},"unit":"건"}'></div>
+    <div class="krds-table-wrap">
+      <table class="tbl col data">
+        <caption>Macie 탐지 유형별 건수</caption>
+        <thead><tr><th scope="col">유형</th><th scope="col" class="rv-num-h">건수</th></tr></thead>
+        <tbody>{% for label, count in detected %}<tr><th scope="row">{{ label }}</th><td class="rv-num">{{ count }}</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    {% else %}<div class="rv-empty">탐지된 항목이 없습니다.</div>{% endif %}
+  </section>
+</div>
