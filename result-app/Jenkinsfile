@@ -1,0 +1,100 @@
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+  }
+
+  environment {
+    APP_DIR    = 'result-app'
+    IMAGE      = 'ghcr.io/kt-coconut-cloud/result-app'
+    GITOPS_URL = 'git@github.com:KT-Coconut-Cloud/gitops.git'
+  }
+
+  stages {
+    stage('Prepare') {
+      steps {
+        script {
+          env.SHA = sh(script: 'git rev-parse --short=7 HEAD', returnStdout: true).trim()
+        }
+        echo "build ${env.IMAGE}:${env.SHA}"
+      }
+    }
+
+    stage('Test') {
+      steps {
+        dir(env.APP_DIR) {
+          sh '''
+            docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v "$PWD":/src -w /src python:3.12-slim \
+              sh -c "pip install -q -r requirements-dev.txt && python -m pytest -q -p no:cacheprovider --junitxml=report.xml"
+          '''
+        }
+      }
+      post {
+        always { junit allowEmptyResults: true, testResults: "${APP_DIR}/report.xml" }
+      }
+    }
+
+    stage('Build') {
+      steps {
+        dir(env.APP_DIR) {
+          sh 'docker build --build-arg GIT_SHA=$SHA -t $IMAGE:$SHA .'
+        }
+      }
+    }
+
+    stage('Scan') {
+      steps {
+        // HIGH 이상 취약점이 있으면 빌드 실패
+        sh '''
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v trivy-cache:/root/.cache aquasec/trivy:latest image \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress \
+            $IMAGE:$SHA
+        '''
+      }
+    }
+
+    stage('Push') {
+      when { branch 'main' }
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'ghcr', usernameVariable: 'GH_USER', passwordVariable: 'GH_TOKEN')]) {
+          sh '''
+            echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_USER" --password-stdin
+            docker push $IMAGE:$SHA
+            docker logout ghcr.io
+          '''
+        }
+      }
+    }
+
+    stage('Update gitops') {
+      when { branch 'main' }
+      steps {
+        withCredentials([sshUserPrivateKey(credentialsId: 'gitops-deploy-key', keyFileVariable: 'GITOPS_KEY')]) {
+          sh '''
+            export GIT_SSH_COMMAND="ssh -i $GITOPS_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+            rm -rf gitops
+            git clone --depth 1 $GITOPS_URL gitops
+            cd gitops/apps/result-app
+            sed -i "s/^\\(\\s*newTag:\\).*/\\1 \\"$SHA\\"/" kustomization.yaml
+            git config user.name "jenkins-bot"
+            git config user.email "jenkins-bot@users.noreply.github.com"
+            git add kustomization.yaml
+            git diff --cached --quiet || git commit -m "result-app: $SHA"
+            git push origin HEAD:main
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      sh 'docker image rm $IMAGE:$SHA || true'
+      sh 'rm -rf gitops'
+    }
+  }
+}

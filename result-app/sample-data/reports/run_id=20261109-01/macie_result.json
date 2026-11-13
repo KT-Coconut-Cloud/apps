@@ -1,0 +1,24 @@
+{
+  "run_id": "20261109-01",
+  "scanned_at": "2026-11-09T14:20:00+09:00",
+  "files": [
+    {
+      "key": "data/run_id=20261109-01/citizen.csv",
+      "detected": false,
+      "types": [],
+      "classification": "clean"
+    },
+    {
+      "key": "data/run_id=20261109-01/crisis_signal.csv",
+      "detected": false,
+      "types": [],
+      "classification": "clean"
+    },
+    {
+      "key": "data/run_id=20261109-01/benefit_payment.csv",
+      "detected": false,
+      "types": [],
+      "classification": "clean"
+    }
+  ]
+}

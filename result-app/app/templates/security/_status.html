@@ -1,0 +1,2 @@
+{% set badge = {'반출 완료': 'ok', '중단': 'fail', '격리': 'warn', '기록 오류': 'fail'} %}
+<span class="rv-badge {{ badge.get(status, '') }}">{{ status }}</span>

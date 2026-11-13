@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% from "_macros.html" import breadcrumb %}
+{% block title %}신청 현황{% endblock %}
+{% block menu %}{% with active='analyses' %}{% include "policy/_menu.html" %}{% endwith %}{% endblock %}
+{% block content %}
+{{ breadcrumb([('데이터 분석 신청', '/policy/analyses'), ('신청 현황', none)]) }}
+<div class="rv-section-head">
+  <h1 class="rv-page-title">신청 현황</h1>
+  <a href="/policy/analyses/new" class="krds-btn medium primary">분석 신청</a>
+</div>
+<p class="rv-desc">내가 신청한 분석의 처리 상태입니다. 분석 중인 건은 끝나면 상태가 자동으로 바뀝니다.</p>
+{% include "policy/_analysis_list.html" %}
+{% endblock %}

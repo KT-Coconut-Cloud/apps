@@ -1,0 +1,6 @@
+{% from "_macros.html" import nav %}
+<li class="rv-side-group">반출 관리</li>
+{{ nav('/security/runs', '반출 기록', 'runs', active, sub=true) }}
+{{ nav('/security/failures', '검토 중단 및 탐지 현황', 'failures', active, sub=true) }}
+<li class="rv-side-group">분석 이용 관리</li>
+{{ nav('/security/analyses', '분석 신청 기록', 'analyses', active, sub=true) }}

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %} | 복지데이터 안심분석시스템</title>
+  <link rel="icon" type="image/svg+xml" href="{{ asset('img/mark.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='vendor/krds/krds.min.css') }}">
+  <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+  <script src="{{ url_for('static', path='vendor/htmx.min.js') }}" defer></script>
+  <script src="{{ url_for('static', path='vendor/echarts.min.js') }}"></script>
+</head>
+<body>
+<a class="rv-skip" href="#content">본문 바로가기</a>
+<div id="wrap">
+  <div class="rv-govbar">
+    <div class="rv-inner">허가된 업무 담당자만 사용할 수 있는 내부 시스템입니다. 분석 신청 기록은 정보보호팀이 확인합니다.</div>
+  </div>
+
+  <header class="rv-header">
+    <div class="rv-inner rv-header-in">
+      <a href="/" class="rv-brand">
+        <img class="rv-mark" src="{{ asset('img/mark.svg') }}" alt="">
+        <span class="rv-brand-name">복지데이터 안심분석시스템</span>
+      </a>
+      {% if user %}
+      <div class="rv-user">
+        <span class="rv-team rv-team-{{ user.role }}">{{ user.team }}</span>
+        <span class="rv-user-name">{{ user.name }}님</span>
+        <span class="rv-session" data-minutes="{{ session_minutes() }}" title="활동이 없으면 자동으로 로그아웃됩니다">
+          <span class="rv-session-label">남은 시간</span> <strong>{{ session_minutes() }}:00</strong>
+        </span>
+        <form method="post" action="/logout">
+          <button type="submit" class="krds-btn small tertiary">로그아웃</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </header>
+
+  <div class="rv-container">
+    <div class="rv-inner rv-layout{% if not user %} rv-layout-single{% endif %}">
+      {% if user %}
+      <nav class="rv-side" aria-label="업무 메뉴">
+        <h2 class="rv-side-tit">{{ user.team }}</h2>
+        <ul class="rv-side-list">
+          {% block menu %}{% endblock %}
+        </ul>
+      </nav>
+      {% endif %}
+      <main id="content" class="rv-content">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+
+  <footer class="rv-footer">
+    <div class="rv-inner rv-footer-in">
+      <p class="rv-footer-desc"><strong>복지데이터 안심분석시스템</strong> 가명처리된 복지 데이터를 승인된 분석 템플릿으로만 분석하고, 소규모 집계는 가려서 제공합니다.</p>
+      <p class="rv-footer-credit">© 2026 Team Coconut</p>
+    </div>
+  </footer>
+</div>
+<script src="{{ url_for('static', path='vendor/krds/krds.min.js') }}"></script>
+<script src="{{ asset('js/app.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% from "_macros.html" import breadcrumb %}
+{% block title %}회차 {{ run.run_id }}{% endblock %}
+{% block menu %}{% with active='runs' %}{% include "security/_menu.html" %}{% endwith %}{% endblock %}
+{% block content %}
+{{ breadcrumb([('반출 관리', none), ('반출 기록', '/security/runs'), (run.run_id, none)]) }}
+<h1 class="rv-page-title">반출 회차 <span class="rv-mono">{{ run.run_id }}</span> {% with status=run.status %}{% include "security/_status.html" %}{% endwith %}</h1>
+
+{% if run.broken %}
+<div class="rv-notice rv-notice-danger">보고서 파일 형식이 맞지 않아 읽을 수 없습니다. 파이프라인 담당자에게 확인을 요청하세요.</div>
+{% else %}
+
+<dl class="rv-meta">
+  <div><dt>처리 내용</dt><dd>{{ run.progress }}</dd></div>
+  <div><dt>적용 규칙</dt><dd class="rv-mono">{{ run.rules_version or '기록 없음' }}</dd></div>
+  <div><dt>실행 일시</dt><dd>{{ run.executed_at | dt }}</dd></div>
+</dl>
+
+<ol class="krds-step-wrap rv-steps">
+  {% for s in steps %}
+  <li class="{% if loop.index0 <= run.reached %}done{% elif run.failed_step == loop.index0 %}active rv-step-fail{% endif %}">
+    <span>
+      {% if run.failed_step == loop.index0 %}<em class="sr-only">중단된 단계</em>{% endif %}
+      <i class="step">{{ loop.index }}단계</i>
+      <span class="step-tit">{{ s }}</span>
+    </span>
+  </li>
+  {% endfor %}
+</ol>
+
+<section class="rv-section">
+  <h2 class="rv-section-title">적정성 검토</h2>
+  <p class="rv-note">검토 일시 {{ run.review.reviewed_at | dt }}</p>
+  <div class="krds-table-wrap">
+    <table class="tbl col data">
+      <caption>검토 항목별 결과, 측정값, 사유</caption>
+      <thead><tr><th scope="col">검토 항목</th><th scope="col">결과</th><th scope="col">측정값</th><th scope="col">사유</th></tr></thead>
+      <tbody>
+        {% for c in run.review.checks %}
+        <tr>
+          <th scope="row">{{ CHECK_LABELS.get(c.item, c.item) }}</th>
+          <td>{% if c.passed %}<span class="rv-badge ok">통과</span>{% else %}<span class="rv-badge fail">실패</span>{% endif %}</td>
+          <td>{{ c.value if c.value is not none else '-' }}</td>
+          <td>{{ c.reason or '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="rv-section">
+  <h2 class="rv-section-title">반출 기록</h2>
+  {% if run.export %}
+  <p class="rv-note">반출 일시 {{ run.export.executed_at | dt }}</p>
+  <div class="krds-table-wrap">
+    <table class="tbl col data">
+      <caption>반출 파일별 행 수와 SHA-256 해시</caption>
+      <thead><tr><th scope="col">파일</th><th scope="col" class="rv-num-h">행 수</th><th scope="col">SHA-256</th></tr></thead>
+      <tbody>
+        {% for f in run.export.files %}
+        <tr>
+          <th scope="row" class="rv-mono">{{ f.key }}</th>
+          <td class="rv-num">{{ f.rows | num }}</td>
+          <td class="rv-mono rv-hash" title="{{ f.sha256 }}">{{ f.sha256[:16] }}…</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="rv-empty">적정성 검토에서 중단되어 반출하지 않았습니다.</div>
+  {% endif %}
+</section>
+
+<section class="rv-section">
+  <h2 class="rv-section-title">Macie 검사</h2>
+  {% if run.macie %}
+  <p class="rv-note">검사 일시 {{ run.macie.scanned_at | dt }}</p>
+  <div class="krds-table-wrap">
+    <table class="tbl col data">
+      <caption>파일별 민감정보 탐지 여부, 탐지 유형, 이동 위치</caption>
+      <thead><tr><th scope="col">파일</th><th scope="col">탐지</th><th scope="col">탐지 유형</th><th scope="col">이동 위치</th></tr></thead>
+      <tbody>
+        {% for f in run.macie.files %}
+        <tr>
+          <th scope="row" class="rv-mono">{{ f.key }}</th>
+          <td>{% if f.detected %}<span class="rv-badge fail">탐지</span>{% else %}<span class="rv-badge ok">없음</span>{% endif %}</td>
+          <td>{% for t in f.types %}{{ MACIE_TYPE_LABELS.get(t, t) }}{% if not loop.last %}, {% endif %}{% else %}-{% endfor %}</td>
+          <td>{% if f.classification == 'quarantine' %}<span class="rv-badge warn">격리 버킷</span>{% else %}정제 버킷{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="rv-empty">{% if run.export %}Macie 검사 기록이 아직 없습니다.{% else %}반출하지 않아 검사 대상이 없습니다.{% endif %}</div>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

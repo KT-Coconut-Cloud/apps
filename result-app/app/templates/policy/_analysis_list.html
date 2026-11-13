@@ -1,0 +1,28 @@
+{% from "_macros.html" import analysis_status %}
+<div id="analysis-list"{% if polling %} hx-get="/policy/analyses" hx-trigger="every {{ poll_seconds() }}s" hx-swap="outerHTML"{% endif %}>
+  {% if items %}
+  <div class="krds-table-wrap">
+    <table class="tbl col data">
+      <caption>내가 신청한 분석 목록</caption>
+      <thead>
+        <tr><th scope="col">신청번호</th><th scope="col">신청 일시</th><th scope="col">분석 템플릿</th><th scope="col">데이터 기준일</th><th scope="col">조건</th><th scope="col">상태</th></tr>
+      </thead>
+      <tbody>
+        {% for a in items %}
+        {% set s = catalog.get(a.request.scenario) %}
+        <tr>
+          <td><a href="/policy/analyses/{{ a.request.request_id }}" class="rv-mono">{{ a.request.request_id }}</a></td>
+          <td>{{ a.request.requested_at | dt }}</td>
+          <td>{{ s.title if s else a.request.scenario }}</td>
+          <td>{{ run_day(a.request.run_id) }}</td>
+          <td class="rv-wrap">{{ params_text(s, a.request.params) }}</td>
+          <td>{{ analysis_status(a.status, a.status_label) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="rv-empty">신청한 분석이 없습니다.</div>
+  {% endif %}
+</div>

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_macros.html" import breadcrumb %}
+{% block title %}분석 결과{% endblock %}
+{% block menu %}{% with active='results' %}{% include "policy/_menu.html" %}{% endwith %}{% endblock %}
+{% block content %}
+{{ breadcrumb([('분석 결과', none)]) }}
+<h1 class="rv-page-title">분석 결과</h1>
+<p class="rv-desc">분석이 끝난 신청의 결과입니다. 결과는 신청한 본인만 볼 수 있습니다.</p>
+
+{% if items %}
+<div class="krds-table-wrap">
+  <table class="tbl col data">
+    <caption>완료된 분석 결과 목록</caption>
+    <thead>
+      <tr><th scope="col">분석 템플릿</th><th scope="col">조건</th><th scope="col">데이터 기준일</th><th scope="col">완료 일시</th><th scope="col" class="rv-num-h">비공개 값</th><th scope="col"><span class="sr-only">보기</span></th></tr>
+    </thead>
+    <tbody>
+      {% for a in items %}
+      {% set s = catalog.get(a.request.scenario) %}
+      <tr>
+        <th scope="row">{{ s.title if s else a.request.scenario }}</th>
+        <td class="rv-wrap">{{ params_text(s, a.request.params) }}</td>
+        <td>{{ run_day(a.request.run_id) }}</td>
+        <td>{{ a.manifest.finished_at | dt }}</td>
+        <td class="rv-num">{{ a.manifest.suppressed_cells | num }}</td>
+        <td><a href="/policy/analyses/{{ a.request.request_id }}" class="krds-btn small secondary">결과 보기</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="rv-empty">완료된 분석 결과가 없습니다. <a href="/policy/analyses/new">분석 신청</a>에서 시작하세요.</div>
+{% endif %}
+{% endblock %}

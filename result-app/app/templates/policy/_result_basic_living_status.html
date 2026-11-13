@@ -1,0 +1,38 @@
+{% from "_macros.html" import count %}
+<ul class="rv-stats">
+  <li><span>기준 연도</span><strong>{{ view.summary.latest_year or '-' }}</strong></li>
+  <li><span>수급자 수 (급여 종류 합산)</span><strong>{{ view.summary.recipients | num }}</strong></li>
+</ul>
+
+<section class="rv-section">
+  <h2 class="rv-section-title">연도별 급여 종류별 수급자 수</h2>
+  {% if view.chart.series %}
+  <div class="rv-chart" data-chart='{"type":"bar-group","labels":{{ view.chart.years | tojson }},"series":{{ view.chart.series | tojson }},"unit":"명"}'></div>
+  {% else %}<div class="rv-empty">표시할 수 있는 칸이 없습니다.</div>{% endif %}
+</section>
+
+<section class="rv-section">
+  <h2 class="rv-section-title">가구 유형별 수급 현황</h2>
+  <div class="krds-table-wrap">
+    <table class="tbl col data">
+      <caption>연도, 가구 유형, 급여 종류별 수급자 수와 1인당 월평균 지급액</caption>
+      <thead>
+        <tr><th scope="col">연도</th><th scope="col">가구 유형</th><th scope="col">급여 종류</th><th scope="col" class="rv-num-h">수급자 수</th><th scope="col" class="rv-num-h">월평균 지급액(원)</th></tr>
+      </thead>
+      <tbody>
+        {% for r in view.rows %}
+        <tr>
+          <td>{{ r.year }}</td>
+          <th scope="row">{{ r.household_type }}</th>
+          <td>{{ r.benefit_type }}</td>
+          <td class="rv-num">{{ count(r.recipients, min_cell) }}</td>
+          <td class="rv-num">{{ count(r.avg_payment, min_cell) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="rv-empty-cell">조건에 맞는 결과가 없습니다.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="rv-legend">X: {{ min_cell }} 미만이라 비공개</p>
+</section>

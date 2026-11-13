@@ -1,0 +1,4 @@
+<div id="pending" class="rv-notice" role="status"
+     hx-get="/policy/analyses/{{ item.request.request_id }}" hx-trigger="every {{ poll_seconds() }}s" hx-swap="outerHTML">
+  분석하고 있습니다. 끝나면 이 화면에 결과가 바로 표시됩니다.
+</div>

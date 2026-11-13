@@ -1,0 +1,20 @@
+<p class="rv-note">{{ scenario.description }}</p>
+<div class="rv-fields">
+  {% for p in scenario.params %}
+  <div class="form-group">
+    <div class="form-tit"><label for="p-{{ p.name }}">{{ p.label }}{% if p.required %} <span class="rv-req" aria-label="필수">*</span>{% endif %}</label></div>
+    <div class="form-conts">
+      {% if p.kind == 'choice' %}
+      <select id="p-{{ p.name }}" name="{{ p.name }}" class="krds-form-select">
+        <option value="">전체</option>
+        {% for c in p.choices %}<option{% if values.get(p.name) == c %} selected{% endif %}>{{ c }}</option>{% endfor %}
+      </select>
+      {% elif p.kind == 'month' %}
+      <input type="month" id="p-{{ p.name }}" name="{{ p.name }}" class="krds-input" value="{{ values.get(p.name, '') }}" placeholder="YYYY-MM"{% if p.required %} required{% endif %}>
+      {% else %}
+      <input type="number" id="p-{{ p.name }}" name="{{ p.name }}" class="krds-input" value="{{ values.get(p.name, p.default) }}" min="2000" max="2099" placeholder="YYYY"{% if p.required %} required{% endif %}>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>

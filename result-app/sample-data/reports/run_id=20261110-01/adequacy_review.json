@@ -1,0 +1,26 @@
+{
+  "run_id": "20261110-01",
+  "reviewed_at": "2026-11-10T14:00:00+09:00",
+  "rules_version": "rules-v1.0",
+  "passed": true,
+  "checks": [
+    {
+      "item": "direct_identifier",
+      "passed": true,
+      "value": 0,
+      "reason": null
+    },
+    {
+      "item": "generalization",
+      "passed": true,
+      "value": "주소 시군구, 생년 5세 구간",
+      "reason": null
+    },
+    {
+      "item": "k_anonymity",
+      "passed": true,
+      "value": 7,
+      "reason": null
+    }
+  ]
+}
