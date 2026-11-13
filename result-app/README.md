@@ -1,8 +1,9 @@
 # 복지데이터 안심분석시스템 (결과 조회 앱)
 
-하이브리드 클라우드 개인정보 보호 분석 인프라 프로젝트의 결과 조회 앱이다. 정책기획팀은 승인된 분석 템플릿으로 분석을 신청하고 결과를 받으며, 정보보호팀은 반출 기록과 분석 신청 기록을 확인한다.
+1. 정책기획팀 - 승인된 분석 템플릿으로 데이터 분석을 신청하고 결과를 확인
+2. 정보보호팀 - 데이터 반출 기록과 분석 신청 기록을 확인
 
-미리보기: https://heeyeon-yang.github.io/hybrid-privacy-viewer/ (샘플 데이터로 만든 정적 화면)
+미리보기: https://heeyeon-yang.github.io/hybrid-privacy-viewer/ (샘플 데이터로 만든 기능 확인용 화면)
 
 ## 기능
 
@@ -17,29 +18,17 @@
 
 - 자유 SQL 없이 등록된 템플릿과 조건으로만 분석한다.
 - 결과에서 5 미만인 집계는 X로 비공개 처리한다.
-- 앱은 원본 DB와 가명처리 데이터를 읽지 않고, 정제 버킷의 `results/`, `reports/`만 읽는다.
+- 앱은 원본 DB와 가명처리 데이터를 읽지 않고, 정제 완료된 버킷의 `results/`, `reports/`만 읽는다.
+  
 
-## 기술 스택
-
-| 구분 | 사용 기술 |
-| --- | --- |
-| 서버 | Python 3.12, FastAPI, Uvicorn, Jinja2, pydantic-settings |
-| 화면 | KRDS, htmx, Apache ECharts |
-| 데이터 | pandas (로컬 분석), boto3 (S3, Lambda) |
-| 테스트 | pytest, moto |
-| 배포 | Docker, GitHub Actions (정적 미리보기) |
-
-사용한 오픈소스의 버전과 라이선스는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)에 정리했다.
-
-## 로컬 실행
-
+## 실행
 ```bash
-uv venv -p 3.12
-uv pip install -r requirements-dev.txt
-uv run uvicorn app.main:app --reload
+pip install -r requirements-dev.txt
+uvicorn app.main:app --reload
+pytest
 ```
 
-`sample-data/`를 버킷처럼 읽고, AWS Lambda 대신 로컬 함수가 샘플 데이터를 집계한다. 개발용 계정은 `accounts.dev.json`에 있다.
+기본값은 sample-data/를 버킷 대신 읽는다. 개발용 계정은 accounts.dev.json에 있다.
 
 | 환경변수 | 기본값 | AWS 연결 시 |
 | --- | --- | --- |
@@ -48,16 +37,6 @@ uv run uvicorn app.main:app --reload
 | `RESULT_APP_ANALYSIS_BACKEND` | `local` | `lambda` |
 | `RESULT_APP_SESSION_SECRET` | `change-me` | 임의의 긴 값 |
 
-## 테스트
 
-```bash
-uv run pytest
-```
-
-## 정적 미리보기 만들기
-
-```bash
-uv run python scripts/build_static_site.py --base /hybrid-privacy-viewer/
-```
-
-`site/`에 화면별 HTML이 생긴다. `main`에 push하면 GitHub Actions가 테스트 후 같은 명령으로 Pages에 올린다.
+## 배포
+main에 병합되면 Jenkins가 테스트, 이미지 빌드, Trivy 검사 후 ghcr.io/kt-coconut-cloud/result-app:<커밋 SHA>로 push하고 gitops 저장소의 태그를 갱신한다. 배포는 Argo CD가 맡는다.
