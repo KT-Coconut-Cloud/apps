@@ -1,0 +1,53 @@
+{
+  "Comment": "Inspect one exported run: check hashes, scan with Macie, sort into clean or quarantine",
+  "StartAt": "Check",
+  "TimeoutSeconds": 3600,
+  "States": {
+    "Check": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {"FunctionName": "${CheckFunctionArn}", "Payload.$": "$"},
+      "OutputPath": "$.Payload",
+      "Next": "Route"
+    },
+    "Route": {
+      "Type": "Choice",
+      "Choices": [
+        {"Variable": "$.action", "StringEquals": "scan", "Next": "Wait"},
+        {"Variable": "$.action", "StringEquals": "error", "Next": "Classify"}
+      ],
+      "Default": "Done"
+    },
+    "Wait": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "Next": "JobStatus"
+    },
+    "JobStatus": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:macie2:describeClassificationJob",
+      "Parameters": {"JobId.$": "$.job_id"},
+      "ResultSelector": {"status.$": "$.JobStatus"},
+      "ResultPath": "$.macie",
+      "Next": "JobDone"
+    },
+    "JobDone": {
+      "Type": "Choice",
+      "Choices": [
+        {"Variable": "$.macie.status", "StringEquals": "RUNNING", "Next": "Wait"},
+        {"Variable": "$.macie.status", "StringEquals": "IDLE", "Next": "Wait"}
+      ],
+      "Default": "Classify"
+    },
+    "Classify": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {"FunctionName": "${ClassifyFunctionArn}", "Payload.$": "$"},
+      "OutputPath": "$.Payload",
+      "End": true
+    },
+    "Done": {
+      "Type": "Succeed"
+    }
+  }
+}

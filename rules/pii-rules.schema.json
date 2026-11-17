@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pii-rules",
+  "type": "object",
+  "required": ["version", "k_anonymity", "tables"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"type": "string", "pattern": "^rules-v[0-9]+\\.[0-9]+$"},
+    "k_anonymity": {
+      "type": "object",
+      "required": ["threshold"],
+      "additionalProperties": false,
+      "properties": {"threshold": {"type": "integer", "minimum": 2}}
+    },
+    "tables": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/table"}
+    }
+  },
+  "$defs": {
+    "table": {
+      "type": "object",
+      "required": ["columns"],
+      "additionalProperties": false,
+      "properties": {
+        "columns": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/column"}
+        },
+        "quasi_identifiers": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      }
+    },
+    "column": {
+      "type": "object",
+      "required": ["action"],
+      "additionalProperties": false,
+      "properties": {
+        "action": {"enum": ["drop", "keep", "tokenize", "generalize", "map"]},
+        "as": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "method": {"enum": ["sigungu", "month", "year", "age_band"]},
+        "values": {"type": "object", "additionalProperties": {"type": ["string", "integer"]}},
+        "default": {"type": ["string", "integer"]}
+      },
+      "allOf": [
+        {"if": {"properties": {"action": {"const": "generalize"}}}, "then": {"required": ["method"]}},
+        {"if": {"properties": {"action": {"const": "map"}}}, "then": {"required": ["values"]}},
+        {"if": {"properties": {"action": {"const": "drop"}}}, "then": {"not": {"required": ["as"]}}}
+      ]
+    }
+  }
+}

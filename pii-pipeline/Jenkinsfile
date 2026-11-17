@@ -1,0 +1,136 @@
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+  }
+
+  environment {
+    IMAGE      = 'ghcr.io/kt-coconut-cloud/pii-pipeline'
+    GITOPS_URL = 'git@github.com:KT-Coconut-Cloud/gitops.git'
+  }
+
+  stages {
+    stage('Prepare') {
+      steps {
+        script {
+          env.SHA = sh(script: 'git rev-parse --short=7 HEAD', returnStdout: true).trim()
+          env.HAS_RULES = fileExists('rules/pii-rules.yaml') ? 'true' : 'false'
+          env.HAS_TESTDATA = fileExists('testdata/raw/citizen.csv') ? 'true' : 'false'
+        }
+        echo "build ${env.IMAGE}:${env.SHA} (rules: ${env.HAS_RULES}, testdata: ${env.HAS_TESTDATA})"
+      }
+    }
+
+    stage('Test') {
+      steps {
+        sh '''
+          docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v "$PWD":/src -w /src/pii-pipeline python:3.12-slim \
+            sh -c "pip install -q -r requirements-dev.txt && python -m pytest -q -p no:cacheprovider --junitxml=report.xml"
+        '''
+      }
+      post {
+        always { junit allowEmptyResults: true, testResults: 'pii-pipeline/report.xml' }
+      }
+    }
+
+    stage('Validate rules') {
+      when { environment name: 'HAS_RULES', value: 'true' }
+      steps {
+        // 형식이 틀린 규칙 파일은 여기서 실패
+        sh '''
+          docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v "$PWD":/src -w /src/pii-pipeline python:3.12-slim \
+            sh -c "pip install -q -r requirements.txt && python -m pipeline \
+            --rules ../rules/pii-rules.yaml --schema ../rules/pii-rules.schema.json validate-rules"
+        '''
+      }
+    }
+
+    stage('Leak check') {
+      when {
+        allOf {
+          environment name: 'HAS_RULES', value: 'true'
+          environment name: 'HAS_TESTDATA', value: 'true'
+        }
+      }
+      steps {
+        // 합성 데이터에 규칙을 적용한 결과에 원본 값이 남아 있으면 실패
+        sh '''
+          docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v "$PWD":/src -w /src/pii-pipeline python:3.12-slim \
+            sh -c "pip install -q -r requirements.txt && python -m pipeline \
+            --rules ../rules/pii-rules.yaml --schema ../rules/pii-rules.schema.json --work /tmp/leakcheck \
+            leakcheck --raw-dir ../testdata/raw"
+        '''
+      }
+    }
+
+    stage('Build') {
+      steps {
+        sh 'docker build --build-arg GIT_SHA=$SHA -f pii-pipeline/Dockerfile -t $IMAGE:$SHA .'
+      }
+    }
+
+    stage('Scan') {
+      steps {
+        sh '''
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v trivy-cache:/root/.cache aquasec/trivy:latest image \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress \
+            $IMAGE:$SHA
+        '''
+      }
+    }
+
+    stage('Push') {
+      when {
+        allOf {
+          branch 'main'
+          environment name: 'HAS_RULES', value: 'true'
+        }
+      }
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'ghcr', usernameVariable: 'GH_USER', passwordVariable: 'GH_TOKEN')]) {
+          sh '''
+            echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_USER" --password-stdin
+            docker push $IMAGE:$SHA
+            docker logout ghcr.io
+          '''
+        }
+      }
+    }
+
+    stage('Update gitops') {
+      when {
+        allOf {
+          branch 'main'
+          environment name: 'HAS_RULES', value: 'true'
+        }
+      }
+      steps {
+        withCredentials([sshUserPrivateKey(credentialsId: 'gitops-deploy-key', keyFileVariable: 'GITOPS_KEY')]) {
+          sh '''
+            export GIT_SSH_COMMAND="ssh -i $GITOPS_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+            rm -rf gitops
+            git clone --depth 1 $GITOPS_URL gitops
+            cd gitops/pii-job
+            sed -i "s/^\\(\\s*newTag:\\).*/\\1 \\"$SHA\\"/" kustomization.yaml
+            git config user.name "jenkins-bot"
+            git config user.email "jenkins-bot@users.noreply.github.com"
+            git add kustomization.yaml
+            git diff --cached --quiet || git commit -m "pii-pipeline: $SHA"
+            git push origin HEAD:main
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      sh 'docker image rm $IMAGE:$SHA || true'
+      sh 'rm -rf gitops'
+    }
+  }
+}

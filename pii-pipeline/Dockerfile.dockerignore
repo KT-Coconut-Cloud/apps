@@ -1,0 +1,5 @@
+*
+!pii-pipeline/requirements.txt
+!pii-pipeline/pipeline
+!rules
+**/__pycache__

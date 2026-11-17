@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     data_dir: Path = Path("sample-data")
     s3_bucket: str = ""
     s3_region: str = "ap-northeast-2"
+    # on-prem reaches AWS through interface endpoints over WireGuard
+    s3_endpoint_url: str = ""
+    lambda_endpoint_url: str = ""
     # one credential set per team, matching the IAM split in the spec
     results_profile: str = ""
     reports_profile: str = ""
