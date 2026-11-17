@@ -1,10 +1,7 @@
-"""Runs a template query on Athena for the result app and saves result.csv."""
+"""Validates an analysis request from the result app and starts the Athena query."""
 
-import csv
-import io
 import logging
 import os
-import time
 
 import boto3
 from botocore.exceptions import ClientError
@@ -16,12 +13,6 @@ log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 athena = boto3.client("athena")
-POLL_SECONDS = 1
-DONE = ("SUCCEEDED", "FAILED", "CANCELLED")
-
-
-def min_cell() -> int:
-    return int(os.environ.get("MIN_CELL_SIZE", "5"))
 
 
 def claim_request_id(bucket: str, request: dict) -> str:
@@ -44,52 +35,6 @@ def claim_request_id(bucket: str, request: dict) -> str:
             if e.response["Error"]["Code"] not in ("PreconditionFailed", "ConditionalRequestConflict"):
                 raise
     raise RuntimeError("could not allocate a request id")
-
-
-def wait(query_id: str, context) -> str:
-    while True:
-        state = athena.get_query_execution(QueryExecutionId=query_id)["QueryExecution"]["Status"]["State"]
-        if state in DONE:
-            return state
-        if context.get_remaining_time_in_millis() < 10_000:
-            athena.stop_query_execution(QueryExecutionId=query_id)
-            return "TIMEOUT"
-        time.sleep(POLL_SECONDS)
-
-
-def fetch(query_id: str) -> list[list[str]]:
-    rows = []
-    for page in athena.get_paginator("get_query_results").paginate(QueryExecutionId=query_id):
-        rows += [[d.get("VarCharValue", "") for d in r["Data"]] for r in page["ResultSet"]["Rows"]]
-    return rows
-
-
-def run_query(scenario, request: dict, context) -> tuple[dict, str | None]:
-    sql, args = build_query(scenario, request["run_id"], request["params"], min_cell())
-    try:
-        query_id = athena.start_query_execution(
-            QueryString=sql,
-            ExecutionParameters=args,
-            QueryExecutionContext={"Database": env("ATHENA_DATABASE")},
-            WorkGroup=env("ATHENA_WORKGROUP"),
-        )["QueryExecutionId"]
-        state = wait(query_id, context)
-        if state != "SUCCEEDED":
-            return {"status": "failed", "rows": 0, "suppressed_cells": 0, "error": f"query_failed: {state}"}, None
-        rows = fetch(query_id)
-    except ClientError as e:
-        log.exception("athena error for %s", request["request_id"])
-        return {"status": "failed", "rows": 0, "suppressed_cells": 0,
-                "error": f"query_failed: {e.response['Error']['Code']}"}, None
-
-    header, body = rows[0], rows[1:]
-    hidden_cols = [header.index(c) for c in (*scenario.counts, *scenario.derived)]
-    hidden = sum(1 for r in body for i in hidden_cols if r[i] == "")
-    out = io.StringIO()
-    w = csv.writer(out, lineterminator="\n")
-    w.writerow(header)
-    w.writerows(body)
-    return {"status": "succeeded", "rows": len(body), "suppressed_cells": hidden, "error": None}, out.getvalue()
 
 
 def handler(event, context):
@@ -125,15 +70,23 @@ def handler(event, context):
     record_key = f"reports/analysis_requests/{request_id}.json"
     put_json(bucket, record_key, {**request, "status": "running"})
 
-    result, text = run_query(scenario, request, context)
-    base = f"results/requests/{request_id}/"
-    if text is not None:
-        s3.put_object(Bucket=bucket, Key=base + "result.csv", Body=text.encode("utf-8"), ContentType="text/csv")
+    sql, args = build_query(scenario, run_id, params, int(os.environ.get("MIN_CELL_SIZE", "5")))
+    try:
+        athena.start_query_execution(
+            # analysis-finalize reads the request id back from this line
+            QueryString=f"-- request_id={request_id}\n{sql}",
+            ExecutionParameters=args,
+            QueryExecutionContext={"Database": env("ATHENA_DATABASE")},
+            WorkGroup=env("ATHENA_WORKGROUP"),
+        )
+    except ClientError as e:
+        log.exception("athena did not accept %s", request_id)
+        failed = {"status": "failed", "rows": 0, "suppressed_cells": 0,
+                  "error": f"query_failed: {e.response['Error']['Code']}", "finished_at": now().isoformat()}
+        put_json(bucket, record_key, {**request, **failed})
+        manifest = {k: request[k] for k in ("request_id", "run_id", "scenario", "params")}
+        put_json(bucket, f"results/requests/{request_id}/manifest.json", {**manifest, **failed})
+        return {"request_id": request_id, "status": "failed"}
 
-    finished = {**result, "finished_at": now().isoformat()}
-    put_json(bucket, record_key, {**request, **finished})
-    # written last: the app treats the request as finished once this exists
-    manifest = {k: request[k] for k in ("request_id", "run_id", "scenario", "params")}
-    put_json(bucket, base + "manifest.json", {**manifest, **finished})
-    log.info("request %s: %s", request_id, result["status"])
-    return {"request_id": request_id, "status": result["status"]}
+    log.info("request %s started", request_id)
+    return {"request_id": request_id, "status": "running"}

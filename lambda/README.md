@@ -51,6 +51,16 @@ Compress-Archive -Path *.py -DestinationPath functions.zip -Force
 | pii-classify | 1분 | 256MB |
 | analysis-request | 60초 | 256MB |
 
+## 실행 역할
+
+| 역할 | 권한 |
+| --- | --- |
+| pii-check | 반입 버킷 `run_id=*` 읽기, 정제 버킷 `reports/*` 쓰기, `macie2:CreateClassificationJob`, KMS(반입 키 복호화, 정제 키 암호화) |
+| pii-classify | `macie2:ListFindings`, `macie2:GetFindings`, 반입 버킷 `run_id=*` 읽기와 삭제(버전 읽기 포함), 정제 버킷 `reports/*` 읽기와 쓰기, `data/*`와 `results/run_id=*` 쓰기, 격리 버킷 쓰기, `sns:Publish`(coconut-alerts), KMS(반입 복호화, 정제와 격리 암호화) |
+| analysis-request | 정제 버킷 목록 조회, `data/*` 읽기, `results/*` 읽기와 쓰기, `reports/analysis_requests/*` 쓰기, `athena:StartQueryExecution`, `GetQueryExecution`, `GetQueryResults`, `StopQueryExecution`, Glue 데이터베이스와 테이블 조회, `athena-tmp/` 읽기와 쓰기, KMS(정제 키) |
+
+세 역할 모두 CloudWatch Logs 쓰기(`AWSLambdaBasicExecutionRole`) 포함. Step Functions와 EventBridge 역할은 콘솔에서 생성 시 자동으로 만들어짐
+
 ## AWS 설정
 
 - EventBridge 규칙: `coconut-pii-ingest`의 Object Created, 키 suffix `export_record.json` → 상태 머신

@@ -36,12 +36,12 @@ def build_backends(settings: Settings) -> tuple:
     if settings.analysis_backend == "lambda":
         from botocore.config import Config
 
-        # the function waits for Athena, and a retried invoke would run the analysis twice
+        # a retried invoke would start the same analysis twice
         client = _session(settings.results_profile).client(
             "lambda",
             region_name=settings.s3_region,
             endpoint_url=settings.lambda_endpoint_url or None,
-            config=Config(read_timeout=90, retries={"total_max_attempts": 1}),
+            config=Config(retries={"total_max_attempts": 1}),
         )
         analysis = LambdaBackend(client, settings.analysis_function)
     else:

@@ -10,7 +10,7 @@ from moto import mock_aws
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 LANDING, CLEAN, QUARANTINE = "landing", "clean", "quarantine"
-MODULES = ["common", "catalog", "check", "classify", "analyze"]
+MODULES = ["common", "catalog", "check", "classify", "analyze", "finalize"]
 
 
 class Context:
