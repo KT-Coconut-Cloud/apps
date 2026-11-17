@@ -8,9 +8,10 @@ AWS 측 Lambda 함수 코드. 리소스 생성과 IAM은 AWS 담당이 구성
 | --- | --- | --- | --- |
 | pii-check | `check.handler` | Step Functions | 온프렘 보고서를 정제 버킷 `reports/`로 복사, CSV 해시와 행 수 대조, Macie 작업 시작 |
 | pii-classify | `classify.handler` | Step Functions | Macie 결과로 판정(PASS, FAIL, ERROR), CSV를 정제 또는 격리 버킷으로 이동, `macie_result.json` 작성, FAIL과 ERROR는 SNS 알림 |
-| analysis-request | `analyze.handler` | 결과 조회 앱 (Invoke) | 신청 검증과 기록, Athena 쿼리 실행, `result.csv` 저장 |
+| analysis-request | `analyze.handler` | 결과 조회 앱 (Invoke) | 신청 검증과 기록, Athena 쿼리 시작 |
+| analysis-finalize | `finalize.handler` | EventBridge (Athena 쿼리 종료) | 쿼리 결과를 `result.csv`로 저장, 신청 상태 갱신 |
 
-- 런타임 Python 3.12, 추가 패키지 없음. 세 함수 모두 같은 zip 사용
+- 런타임 Python 3.12, 추가 패키지 없음. 네 함수 모두 같은 zip 사용
 - 분석 템플릿 쿼리는 `catalog.py`에 있음. 5 미만 집계는 쿼리 안에서 NULL로 처리되어 Athena 밖으로 나가지 않음
 - 상태 머신 정의는 `statemachine.json` (`${CheckFunctionArn}`, `${ClassifyFunctionArn}`을 실제 ARN으로 교체)
 
@@ -24,7 +25,8 @@ AWS 측 Lambda 함수 코드. 리소스 생성과 IAM은 AWS 담당이 구성
                    [error] → pii-classify
                    [skip, 적정성 검토 탈락] → 종료 (보고서만 복사됨)
 
-결과 조회 앱 → analysis-request → Athena → coconut-pii-clean/results/requests/<요청ID>/
+결과 조회 앱 → analysis-request → Athena 쿼리 시작 (앱에는 바로 "분석 중" 응답)
+  → 쿼리 종료 → EventBridge → analysis-finalize → coconut-pii-clean/results/requests/<요청ID>/
 ```
 
 ## 패키징
@@ -40,30 +42,32 @@ Compress-Archive -Path *.py -DestinationPath functions.zip -Force
 | --- | --- | --- |
 | pii-check | `LANDING_BUCKET`, `CLEAN_BUCKET` | 반입, 정제 버킷 |
 | pii-check | `MACIE_CUSTOM_IDENTIFIER_IDS` | Macie 사용자 지정 식별자 ID, 쉼표 구분 |
+| pii-check | `MACIE_ALLOW_LIST_IDS` | Macie 허용 목록 ID (토큰 오탐 방지) |
 | pii-classify | `LANDING_BUCKET`, `CLEAN_BUCKET`, `QUARANTINE_BUCKET` | 반입, 정제, 격리 버킷 |
 | pii-classify | `ALERT_TOPIC_ARN` | SNS `coconut-alerts` ARN |
 | analysis-request | `CLEAN_BUCKET`, `ATHENA_DATABASE`, `ATHENA_WORKGROUP` | 정제 버킷, `coconut_db`, `analysis` |
 | analysis-request | `MIN_CELL_SIZE` | 비공개 기준, 기본 5 |
+| analysis-finalize | `CLEAN_BUCKET`, `ATHENA_WORKGROUP` | 정제 버킷, `analysis` |
 
 | 함수 | 제한 시간 | 메모리 |
 | --- | --- | --- |
 | pii-check | 2분 | 256MB |
 | pii-classify | 1분 | 256MB |
-| analysis-request | 60초 | 256MB |
+| analysis-request | 30초 | 256MB |
+| analysis-finalize | 1분 | 256MB |
 
 ## 실행 역할
 
-| 역할 | 권한 |
-| --- | --- |
-| pii-check | 반입 버킷 `run_id=*` 읽기, 정제 버킷 `reports/*` 쓰기, `macie2:CreateClassificationJob`, KMS(반입 키 복호화, 정제 키 암호화) |
-| pii-classify | `macie2:ListFindings`, `macie2:GetFindings`, 반입 버킷 `run_id=*` 읽기와 삭제(버전 읽기 포함), 정제 버킷 `reports/*` 읽기와 쓰기, `data/*`와 `results/run_id=*` 쓰기, 격리 버킷 쓰기, `sns:Publish`(coconut-alerts), KMS(반입 복호화, 정제와 격리 암호화) |
-| analysis-request | 정제 버킷 목록 조회, `data/*` 읽기, `results/*` 읽기와 쓰기, `reports/analysis_requests/*` 쓰기, `athena:StartQueryExecution`, `GetQueryExecution`, `GetQueryResults`, `StopQueryExecution`, Glue 데이터베이스와 테이블 조회, `athena-tmp/` 읽기와 쓰기, KMS(정제 키) |
+네 함수가 역할 하나(`coconut-lambda`)를 같이 사용
 
-세 역할 모두 CloudWatch Logs 쓰기(`AWSLambdaBasicExecutionRole`) 포함. Step Functions와 EventBridge 역할은 콘솔에서 생성 시 자동으로 만들어짐
+- 관리형 정책: `AWSLambdaBasicExecutionRole`, `AmazonMacieFullAccess`, `AmazonAthenaFullAccess`, `AmazonSNSFullAccess`
+- 인라인 정책: 버킷 3개(반입, 정제, 격리) 읽기, 쓰기, 삭제, 목록 조회와 KMS `Decrypt`, `GenerateDataKey`
+- Step Functions와 EventBridge 역할은 콘솔에서 생성할 때 자동으로 만들어짐. 상태 머신 역할에는 `AmazonMacieReadOnlyAccess` 추가
 
 ## AWS 설정
 
-- EventBridge 규칙: `coconut-pii-ingest`의 Object Created, 키 suffix `export_record.json` → 상태 머신
+- EventBridge 규칙 1: `coconut-pii-ingest`의 Object Created, 키 suffix `export_record.json` → 상태 머신
+- EventBridge 규칙 2: source `aws.athena`, detail-type `Athena Query State Change`, `currentState`가 `SUCCEEDED`, `FAILED`, `CANCELLED` → analysis-finalize
 - Macie 사용자 지정 식별자 이름은 `KR_RRN`, `KR_MOBILE_PHONE` (결과 조회 앱이 이 이름으로 표시)
 - Athena 테이블은 `sql/tables.sql`로 생성. `run_id`는 partition projection이라 회차가 늘어도 추가 작업 없음
 - 반입 버킷 버전 관리 필수. 분류 단계가 해시를 확인한 버전(VersionId)을 복사

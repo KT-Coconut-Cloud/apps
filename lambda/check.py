@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+import os
 import re
 
 import boto3
@@ -30,6 +31,8 @@ def inspect(bucket: str, key: str) -> tuple[str | None, str, int]:
 
 def start_macie_job(run_id: str, account_id: str) -> str:
     identifiers = [i for i in env("MACIE_CUSTOM_IDENTIFIER_IDS").split(",") if i]
+    # tokens are hex, so some of them look like phone numbers to the regex
+    allow_lists = [i for i in os.environ.get("MACIE_ALLOW_LIST_IDS", "").split(",") if i]
     terms = [
         {"simpleScopeTerm": {"comparator": "STARTS_WITH", "key": "OBJECT_KEY", "values": [f"run_id={run_id}/"]}},
         {"simpleScopeTerm": {"comparator": "EQ", "key": "OBJECT_EXTENSION", "values": ["csv"]}},
@@ -39,6 +42,7 @@ def start_macie_job(run_id: str, account_id: str) -> str:
         jobType="ONE_TIME",
         clientToken=run_id,  # a retried execution must not start a second job
         customDataIdentifierIds=identifiers,
+        allowListIds=allow_lists,
         managedDataIdentifierSelector="RECOMMENDED",
         s3JobDefinition={
             "bucketDefinitions": [{"accountId": account_id, "buckets": [env("LANDING_BUCKET")]}],

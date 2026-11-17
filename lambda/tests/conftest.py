@@ -25,7 +25,7 @@ def aws(monkeypatch):
     env = {
         "AWS_ACCESS_KEY_ID": "x", "AWS_SECRET_ACCESS_KEY": "x", "AWS_DEFAULT_REGION": "ap-northeast-2",
         "LANDING_BUCKET": LANDING, "CLEAN_BUCKET": CLEAN, "QUARANTINE_BUCKET": QUARANTINE,
-        "MACIE_CUSTOM_IDENTIFIER_IDS": "cdi-1,cdi-2",
+        "MACIE_CUSTOM_IDENTIFIER_IDS": "cdi-1,cdi-2", "MACIE_ALLOW_LIST_IDS": "al-1",
         "ATHENA_DATABASE": "pii", "ATHENA_WORKGROUP": "analysis",
     }
     for k, v in env.items():

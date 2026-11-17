@@ -68,6 +68,7 @@ def test_check_copies_reports_and_starts_macie(aws):
     assert keys(s3, CLEAN) == [f"reports/run_id={RUN}/adequacy_review.json", f"reports/run_id={RUN}/export_record.json"]
     job = fake.jobs[0]
     assert job["name"] == f"pii-{RUN}" and job["clientToken"] == RUN
+    assert job["customDataIdentifierIds"] == ["cdi-1", "cdi-2"] and job["allowListIds"] == ["al-1"]
     terms = [t["simpleScopeTerm"] for t in job["s3JobDefinition"]["scoping"]["includes"]["and"]]
     assert terms[0]["values"] == [f"run_id={RUN}/"] and terms[1]["values"] == ["csv"]
 
