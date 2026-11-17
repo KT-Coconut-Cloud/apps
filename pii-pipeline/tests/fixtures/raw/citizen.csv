@@ -1,0 +1,5 @@
+citizen_id,name,rrn,birth_date,gender,phone,email,address,household_type,income_level
+1,홍길동,900101-1XXXXXX,1990-01-01,남,010-0000-0001,test_0001@example.com,서울특별시 강남구 테스트로 1,1인 가구,중위소득 30% 이하
+2,김테스트,850505-2XXXXXX,1985-05-05,여,010-0000-0002,test_0002@example.com,서울특별시 강남구 테스트로 2,1인 가구,중위소득 30~40%
+3,이샘플,700707-1XXXXXX,1970-07-07,남,010-0000-0003,test_0003@example.com,서울특별시 노원구 샘플로 3,노인 가구,중위소득 40~50%
+4,박예시,650909-2XXXXXX,1965-09-09,여,010-0000-0004,test_0004@example.com,서울특별시 노원구 샘플로 4,노인 가구,중위소득 30% 이하

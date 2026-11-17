@@ -21,16 +21,28 @@ def _session(profile: str):
     return boto3.Session(profile_name=profile or None)
 
 
+def _s3(settings: Settings, profile: str):
+    return _session(profile).client("s3", region_name=settings.s3_region, endpoint_url=settings.s3_endpoint_url or None)
+
+
 def build_backends(settings: Settings) -> tuple:
     if settings.data_source == "s3":
-        results = S3Store(_session(settings.results_profile).client("s3", region_name=settings.s3_region), settings.s3_bucket, "results")
-        reports = S3Store(_session(settings.reports_profile).client("s3", region_name=settings.s3_region), settings.s3_bucket, "reports")
+        results = S3Store(_s3(settings, settings.results_profile), settings.s3_bucket, "results")
+        reports = S3Store(_s3(settings, settings.reports_profile), settings.s3_bucket, "reports")
     else:
         results = LocalStore(settings.data_dir, "results")
         reports = LocalStore(settings.data_dir, "reports")
 
     if settings.analysis_backend == "lambda":
-        client = _session(settings.results_profile).client("lambda", region_name=settings.s3_region)
+        from botocore.config import Config
+
+        # a retried invoke would start the same analysis twice
+        client = _session(settings.results_profile).client(
+            "lambda",
+            region_name=settings.s3_region,
+            endpoint_url=settings.lambda_endpoint_url or None,
+            config=Config(retries={"total_max_attempts": 1}),
+        )
         analysis = LambdaBackend(client, settings.analysis_function)
     else:
         analysis = LocalLambda(settings.data_dir, settings.local_analysis_delay, settings.min_cell_size)
