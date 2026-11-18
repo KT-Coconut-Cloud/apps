@@ -31,6 +31,13 @@ def test_security_run_status(security):
     assert "rules-v1.2" in text
 
 
+def test_macie_error_is_not_quarantine(security):
+    text = security.get("/security/runs").text
+    assert "Macie 검사를 마치지 못해 격리 버킷에 보관" in text
+    detail = security.get("/security/runs/20261113-01").text
+    assert "검증 오류" in detail and "sha256 mismatch" in detail
+
+
 def test_aborted_run_has_no_export(security):
     text = security.get("/security/runs/20261111-01").text
     assert "k-익명성" in text

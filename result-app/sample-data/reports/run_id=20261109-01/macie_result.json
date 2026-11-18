@@ -1,6 +1,8 @@
 {
   "run_id": "20261109-01",
   "scanned_at": "2026-11-09T14:20:00+09:00",
+  "verdict": "PASS",
+  "error": null,
   "files": [
     {
       "key": "data/run_id=20261109-01/citizen.csv",

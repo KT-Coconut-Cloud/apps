@@ -90,7 +90,7 @@ def review(run_id: str, at: str, rules: str, k: int = 7, direct_ok: bool = True)
             "passed": all(c["passed"] for c in checks), "checks": checks}
 
 
-def macie(run_id: str, at: str, hit: str | None = None) -> dict:
+def macie(run_id: str, at: str, hit: str | None = None, error: str | None = None) -> dict:
     files = []
     for name in TABLES:
         detected = name == hit
@@ -98,9 +98,10 @@ def macie(run_id: str, at: str, hit: str | None = None) -> dict:
             "key": f"data/run_id={run_id}/{name}",
             "detected": detected,
             "types": ["KR_MOBILE_PHONE", "KR_RRN"] if detected else [],
-            "classification": "quarantine" if detected else "clean",
+            "classification": "quarantine" if detected or error else "clean",
         })
-    return {"run_id": run_id, "scanned_at": at, "files": files}
+    verdict = "ERROR" if error else "FAIL" if hit else "PASS"
+    return {"run_id": run_id, "scanned_at": at, "verdict": verdict, "error": error, "files": files}
 
 
 def main() -> None:
@@ -114,6 +115,7 @@ def main() -> None:
         ("20261111-01", "2026-11-11T14:00:00+09:00", "k_anon", "rules-v1.1"),
         ("20261111-02", "2026-11-11T16:30:00+09:00", "direct", "rules-v1.1"),
         ("20261112-01", "2026-11-12T14:00:00+09:00", "ok", "rules-v1.2"),
+        ("20261113-01", "2026-11-13T14:00:00+09:00", "error", "rules-v1.2"),
     ]
 
     for run_id, at, case, rules in runs:
@@ -128,7 +130,9 @@ def main() -> None:
         write_json(rep / "adequacy_review.json", review(run_id, at, rules))
         write_json(rep / "export_record.json", export_record(run_id, at, "exported"))
         later = at.replace("T14:00", "T14:20")
-        write_json(rep / "macie_result.json", macie(run_id, later, "crisis_signal.csv" if case == "macie" else None))
+        hit = "crisis_signal.csv" if case == "macie" else None
+        error = f"run_id={run_id}/benefit_payment.csv: sha256 mismatch" if case == "error" else None
+        write_json(rep / "macie_result.json", macie(run_id, later, hit, error))
 
         if case == "ok":
             make_tables(rng, run_id, ROOT / "data" / f"run_id={run_id}")

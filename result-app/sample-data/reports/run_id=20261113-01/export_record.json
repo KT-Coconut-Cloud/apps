@@ -1,0 +1,22 @@
+{
+  "run_id": "20261113-01",
+  "executed_at": "2026-11-13T14:00:00+09:00",
+  "status": "exported",
+  "files": [
+    {
+      "key": "data/run_id=20261113-01/citizen.csv",
+      "rows": 3000,
+      "sha256": "f00e97fb94ed938958b22ae183638c0f322d3710a497c382e56395a17b5946e8"
+    },
+    {
+      "key": "data/run_id=20261113-01/crisis_signal.csv",
+      "rows": 1500,
+      "sha256": "f7ed54c5b5187f80bdb2ef254f69da04af61fc3ba3632e8ffdc3768fa1d9e035"
+    },
+    {
+      "key": "data/run_id=20261113-01/benefit_payment.csv",
+      "rows": 5000,
+      "sha256": "86d07dda148e57ef94c8c647b4d2a25148f7a6348a2a37b2ae44cabedd758c78"
+    }
+  ]
+}

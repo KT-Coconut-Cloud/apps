@@ -27,7 +27,7 @@ class RunSummary:
             return 1
         if self.macie is None:
             return 2
-        if any(f.classification == "quarantine" for f in self.macie.files):
+        if self.macie.failed or any(f.classification == "quarantine" for f in self.macie.files):
             return 3
         return 4
 
@@ -38,19 +38,21 @@ class RunSummary:
         if self.reached == 4:
             return "반출 완료"
         if self.reached == 3:
-            return "격리"
+            return "검증 오류" if self.macie.failed else "격리"
         if self.reached in (0, 1):
             return "중단"
         return "진행 중"
 
     @property
     def failed_step(self) -> int | None:
-        return self.reached + 1 if self.status in ("중단", "격리") else None
+        return self.reached + 1 if self.status in ("중단", "격리", "검증 오류") else None
 
     @property
     def progress(self) -> str:
         if self.broken:
             return "보고서를 읽을 수 없음"
+        if self.status == "검증 오류":
+            return "Macie 검사를 마치지 못해 격리 버킷에 보관"
         if self.status == "격리":
             return "Macie 검사에서 탐지되어 격리"
         if self.failed_step is not None:
