@@ -1,15 +1,22 @@
 """Analysis templates the policy team can request.
 
 The real list lives with the registered Athena queries; this copy must match it.
+All templates read the single exported table livelihood_payment, one row per
+livelihood benefit payment.
 """
 
 import re
 from dataclasses import dataclass, field
 
-SIGUNGU = ["서울 강서구", "서울 노원구", "서울 중랑구", "부산 사하구", "대구 달서구", "인천 남동구", "광주 북구", "대전 서구"]
-CRISIS_TYPES = ["단전", "단수", "건강보험료 체납", "통신비 체납", "임대료 체납", "금융 연체"]
-HOUSEHOLD_TYPES = ["일반 가구", "1인 가구", "노인 가구", "한부모 가구", "장애인 가구"]
-BENEFIT_TYPES = ["생계급여", "의료급여", "주거급여", "교육급여"]
+TABLE = "livelihood_payment"
+
+REGIONS = [
+    "서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", "대전광역시", "울산광역시",
+    "세종특별자치시", "경기도", "강원특별자치도", "충청북도", "충청남도", "전북특별자치도", "전라남도",
+    "경상북도", "경상남도", "제주특별자치도",
+]
+AGE_GROUPS = ["20대", "30대", "40대", "50대", "60대", "70대", "80대 이상"]
+HOUSEHOLD_SIZES = ["1", "2", "3", "4", "5+"]
 
 MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 YEAR = re.compile(r"^20\d{2}$")
@@ -40,35 +47,63 @@ class Scenario:
     counts: tuple[str, ...] = field(default=())
     # blanked together with any suppressed count in the same row
     derived: tuple[str, ...] = field(default=())
+    # how the result page reads the columns
+    labels: dict = field(default_factory=dict)
+    total: str = "payments"
+    focus: str = ""
+    basis: str = ""
 
+
+PAY_MONTH = Param("pay_month", "지급월", "month", required=True, default="2025-12")
+REGION = Param("region", "시도", "choice", tuple(REGIONS))
+AGE_GROUP = Param("age_group", "연령대", "choice", tuple(AGE_GROUPS))
+HOUSEHOLD_SIZE = Param("household_size", "가구원 수", "choice", tuple(HOUSEHOLD_SIZES))
 
 CATALOG = {
-    "crisis_link_rate": Scenario(
-        key="crisis_link_rate",
-        title="위기가구 지원 연계율",
-        description="기간 안에 위기정보가 들어온 가구 중 복지 서비스로 연계된 비율을 시군구, 위기정보 유형별로 봅니다.",
-        params=(
-            Param("from", "시작 월", "month", required=True),
-            Param("to", "종료 월", "month", required=True),
-            Param("crisis_type", "위기정보 유형", "choice", tuple(CRISIS_TYPES)),
-            Param("sigungu", "시군구", "choice", tuple(SIGUNGU)),
-        ),
-        columns=("sigungu", "crisis_type", "households", "linked"),
-        counts=("households", "linked"),
+    "livelihood_recheck": Scenario(
+        key="livelihood_recheck",
+        title="생계급여 재확인 필요 지급 건",
+        description="지급월의 소득인정액을 그해 가구원 수별 생계급여 선정기준과 비교해, 기준을 넘은 지급 건을 시도별로 봅니다.",
+        params=(PAY_MONTH, HOUSEHOLD_SIZE, AGE_GROUP),
+        columns=("region", "payments", "within", "recheck", "no_data"),
+        counts=("payments", "within", "recheck", "no_data"),
+        labels={"region": "시도", "payments": "지급 건", "within": "기준 이내", "recheck": "재확인 필요", "no_data": "자료 부족"},
+        focus="recheck",
+        basis="소득인정액이 선정기준(기준 중위소득 32%)을 넘으면 재확인 필요, 해당 월 평가 자료가 없으면 자료 부족",
     ),
-    "basic_living_status": Scenario(
-        key="basic_living_status",
-        title="기초생활보장 수급 현황",
-        description="연도, 가구 유형, 급여 종류별 수급자 수와 1인당 월평균 지급액을 봅니다.",
-        params=(
-            Param("from", "시작 연도", "year", required=True, default="2023"),
-            Param("to", "종료 연도", "year", required=True, default="2025"),
-            Param("household_type", "가구 유형", "choice", tuple(HOUSEHOLD_TYPES)),
-            Param("benefit_type", "급여 종류", "choice", tuple(BENEFIT_TYPES)),
-        ),
-        columns=("year", "household_type", "benefit_type", "recipients", "avg_payment"),
-        counts=("recipients",),
-        derived=("avg_payment",),
+    "obligor_asset_check": Scenario(
+        key="obligor_asset_check",
+        title="부양의무자 고재산 기준 점검",
+        description="부양의무자의 일반재산이 12억 원을 넘는데 생계급여가 지급된 건을 가구원 수별로 봅니다.",
+        params=(PAY_MONTH, REGION, AGE_GROUP),
+        columns=("household_size", "payments", "no_obligor", "within", "over", "no_data"),
+        counts=("payments", "no_obligor", "within", "over", "no_data"),
+        labels={"household_size": "가구원 수", "payments": "지급 건", "no_obligor": "부양의무자 없음",
+                "within": "기준 이내", "over": "12억 원 초과", "no_data": "자료 부족"},
+        focus="over",
+        basis="생계급여는 부양의무자 기준이 폐지됐지만 부양의무자가 고소득(연 1억 3천만 원 초과) 또는 고재산(일반재산 12억 원 초과)이면 지원 제외",
+    ),
+    "paid_after_death": Scenario(
+        key="paid_after_death",
+        title="사망 이후 생계급여 지급",
+        description="사망 신고된 달 이후에 생계급여가 지급된 건을 연령대별로 봅니다.",
+        params=(PAY_MONTH, REGION),
+        columns=("age_group", "payments", "after_death", "same_month"),
+        counts=("payments", "after_death", "same_month"),
+        labels={"age_group": "연령대", "payments": "지급 건", "after_death": "사망 이후 지급", "same_month": "사망 월 지급(참고)"},
+        focus="after_death",
+        basis="사망 월이 지급월보다 앞서면 사망 이후 지급, 같은 달이면 참고로만 집계",
+    ),
+    "long_stay_abroad": Scenario(
+        key="long_stay_abroad",
+        title="해외 장기 체류 중 생계급여 지급",
+        description="지급월 기준 최근 180일 동안 해외 체류일이 60일을 넘은 수급자에게 지급된 건을 시도별로 봅니다.",
+        params=(PAY_MONTH, AGE_GROUP),
+        columns=("region", "payments", "abroad", "over_60"),
+        counts=("payments", "abroad", "over_60"),
+        labels={"region": "시도", "payments": "지급 건", "abroad": "해외 체류 이력", "over_60": "60일 초과"},
+        focus="over_60",
+        basis="최근 180일 중 해외 체류 60일 초과는 개별가구에서 제외 (국민기초생활 보장법 시행령 제2조제2항제2호)",
     ),
 }
 
@@ -101,4 +136,6 @@ def describe_params(scenario: Scenario | None, params: dict) -> str:
     for p in scenario.params:
         if p.kind == "choice":
             parts.append(params.get(p.name) or f"{p.label} 전체")
+        elif p.name not in ("from", "to") and params.get(p.name):
+            parts.append(f"{p.label} {params[p.name]}")
     return ", ".join(parts)

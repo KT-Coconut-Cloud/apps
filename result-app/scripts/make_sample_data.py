@@ -1,7 +1,11 @@
 """Write synthetic data/, results/ and reports/ under sample-data/ for local development.
 
-data/ stands in for the pseudonymized tables Athena queries. Only the local
-fake Lambda reads it; the app itself never does.
+data/ stands in for the pseudonymized livelihood_payment table Athena queries, in
+the layout the classifier writes to the clean bucket. Only the local fake Lambda
+reads it; the app itself never does.
+
+Rows follow the export columns of the pipeline. The last three columns are
+the extra ones the added templates need.
 """
 
 import csv
@@ -12,15 +16,28 @@ import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent / "sample-data"
+TABLE = "livelihood_payment"
+ROWS = 2000
+PAY_MONTH = "2025-12"
 
-SIGUNGU = ["서울 강서구", "서울 노원구", "서울 중랑구", "부산 사하구", "대구 달서구", "인천 남동구", "광주 북구", "대전 서구"]
-CRISIS = {"단전": 0.62, "단수": 0.58, "건강보험료 체납": 0.41, "통신비 체납": 0.35, "임대료 체납": 0.47, "금융 연체": 0.29}
-CRISIS_WEIGHT = [18, 10, 30, 22, 14, 6]
-MONTHS = ["2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10"]
-HOUSEHOLD = {"일반 가구": 40, "1인 가구": 25, "노인 가구": 18, "한부모 가구": 9, "장애인 가구": 8}
-BENEFIT = {"생계급여": (640_000, 35), "의료급여": (210_000, 30), "주거급여": (320_000, 28), "교육급여": (45_000, 7)}
-YEARS = [2023, 2024, 2025, 2026]
-TABLES = {"citizen.csv": 3000, "crisis_signal.csv": 1500, "benefit_payment.csv": 5000}
+# livelihood benefit (general) payments per region, Dec 2025, Korea Social Security Information Service
+REGIONS = {
+    "서울특별시": 245_582, "부산광역시": 137_750, "대구광역시": 86_550, "인천광역시": 91_934,
+    "광주광역시": 47_852, "대전광역시": 42_451, "울산광역시": 21_884, "세종특별자치시": 3_615,
+    "경기도": 238_002, "충청북도": 41_457, "충청남도": 52_414, "전라남도": 58_769,
+    "경상북도": 85_739, "경상남도": 94_937, "제주특별자치도": 18_535, "강원특별자치도": 45_757,
+    "전북특별자치도": 68_305,
+}
+AGE = {"20대": 5, "30대": 7, "40대": 11, "50대": 18, "60대": 23, "70대": 21, "80대 이상": 15}
+HOUSEHOLD = {"1": 70, "2": 17, "3": 8, "4": 3, "5+": 2}
+# LE80 and GT80_LE100 are within the threshold, the GT100 bands need a recheck
+INCOME = {"LE80": 60, "GT80_LE100": 20, "GT100_LE120": 11, "GT120": 4}
+OBLIGOR = {"NONE": 55, "WITHIN": 41, "OVER": 2, "NO_DATA": 2}
+ABROAD = {"NONE": 90, "LE60": 6, "GT60": 4}
+COLUMNS = [
+    "payment_token", "household_token", "region", "age_group", "gender", "pay_month", "benefit_type",
+    "household_size", "income_ratio_band", "obligor_asset_band", "death_month", "abroad_days_band",
+]
 
 
 def sha(text: str) -> str:
@@ -40,66 +57,67 @@ def write_csv(path: Path, header: list[str], rows) -> None:
         w.writerows(rows)
 
 
-def make_tables(rng: random.Random, run_id: str, out: Path) -> None:
-    # citizen_id mimics the HMAC token the pipeline puts in place of the real id
-    citizens = []
-    for i in range(TABLES["citizen.csv"]):
-        token = "t_" + sha(f"{run_id}:{i}")[:16]
-        sigungu = rng.choice(SIGUNGU)
-        household = rng.choices(list(HOUSEHOLD), weights=HOUSEHOLD.values())[0]
-        citizens.append((token, sigungu, household))
-    write_csv(out / "citizen.csv", ["citizen_id", "sigungu", "household_type"], citizens)
+def pick(rng: random.Random, weights: dict) -> str:
+    return rng.choices(list(weights), weights=weights.values())[0]
 
-    signals = []
-    for _ in range(TABLES["crisis_signal.csv"]):
-        token = rng.choice(citizens)[0]
-        crisis = rng.choices(list(CRISIS), weights=CRISIS_WEIGHT)[0]
-        rate = min(0.95, max(0.05, CRISIS[crisis] + rng.uniform(-0.15, 0.15)))
-        signals.append((token, rng.choice(MONTHS), crisis, int(rng.random() < rate)))
-    write_csv(out / "crisis_signal.csv", ["citizen_id", "signal_month", "crisis_type", "linked"], signals)
 
-    payments = []
-    for _ in range(TABLES["benefit_payment.csv"]):
-        token = rng.choice(citizens)[0]
-        year = rng.choice(YEARS)
-        benefit = rng.choices(list(BENEFIT), weights=[w for _, w in BENEFIT.values()])[0]
-        base = BENEFIT[benefit][0] * (1 + 0.03 * (year - YEARS[0]))
-        payments.append((token, year, benefit, int(round(base * rng.uniform(0.85, 1.15), -2))))
-    write_csv(out / "benefit_payment.csv", ["citizen_id", "year", "benefit_type", "monthly_amount"], payments)
+def death_month(rng: random.Random, age: str) -> str:
+    # deaths cluster in the oldest groups; most rows have none
+    chance = {"70대": 0.03, "80대 이상": 0.06}.get(age, 0.005)
+    if rng.random() >= chance:
+        return ""
+    return rng.choices(["2025-10", "2025-11", "2025-12"], weights=[3, 4, 3])[0]
+
+
+def make_table(rng: random.Random, run_id: str, out: Path) -> None:
+    # tokens mimic the HMAC values the pipeline puts in place of the real ids
+    rows = []
+    for i in range(ROWS):
+        age = pick(rng, AGE)
+        reviewed = rng.random() >= 0.05
+        rows.append((
+            "p_" + sha(f"{run_id}:p:{i}")[:16],
+            "h_" + sha(f"{run_id}:h:{i}")[:16],
+            pick(rng, REGIONS),
+            age,
+            rng.choices(["남", "여"], weights=[45, 55])[0],
+            PAY_MONTH,
+            "생계급여(일반)",
+            pick(rng, HOUSEHOLD) if reviewed else "unknown",
+            pick(rng, INCOME) if reviewed else "NO_DATA",
+            pick(rng, OBLIGOR),
+            death_month(rng, age),
+            pick(rng, ABROAD),
+        ))
+    write_csv(out / f"{TABLE}.csv", COLUMNS, rows)
 
 
 def export_record(run_id: str, at: str, status: str) -> dict:
     files = []
     if status == "exported":
-        files = [
-            {"key": f"data/run_id={run_id}/{name}", "rows": rows, "sha256": sha(run_id + name)}
-            for name, rows in TABLES.items()
-        ]
+        files = [{"key": f"run_id={run_id}/{TABLE}.csv", "rows": ROWS, "sha256": sha(run_id + TABLE)}]
     return {"run_id": run_id, "executed_at": at, "status": status, "files": files}
 
 
 def review(run_id: str, at: str, rules: str, k: int = 7, direct_ok: bool = True) -> dict:
     checks = [
         {"item": "direct_identifier", "passed": direct_ok, "value": 0 if direct_ok else 1,
-         "reason": None if direct_ok else "crisis_signal.contact_phone 컬럼이 삭제되지 않음"},
-        {"item": "generalization", "passed": True, "value": "주소 시군구, 생년 5세 구간", "reason": None},
+         "reason": None if direct_ok else f"{TABLE}.phone 컬럼이 삭제되지 않음"},
+        {"item": "generalization", "passed": True, "value": "주소 시도, 연령 10세 구간, 가구원 5인 이상 통합", "reason": None},
         {"item": "k_anonymity", "passed": k >= 5, "value": k,
-         "reason": None if k >= 5 else f"최소 k={k}, 기준 5 미만 (노원구 90세 이상 1인 가구)"},
+         "reason": None if k >= 5 else f"최소 k={k}, 기준 5 미만 (세종특별자치시 80대 이상 4인 가구)"},
     ]
     return {"run_id": run_id, "reviewed_at": at, "rules_version": rules,
             "passed": all(c["passed"] for c in checks), "checks": checks}
 
 
-def macie(run_id: str, at: str, hit: str | None = None, error: str | None = None) -> dict:
-    files = []
-    for name in TABLES:
-        detected = name == hit
-        files.append({
-            "key": f"data/run_id={run_id}/{name}",
-            "detected": detected,
-            "types": ["KR_MOBILE_PHONE", "KR_RRN"] if detected else [],
-            "classification": "quarantine" if detected or error else "clean",
-        })
+def macie(run_id: str, at: str, hit: bool = False, error: str | None = None) -> dict:
+    files = [{
+        "key": f"run_id={run_id}/{TABLE}.csv",
+        "detected": hit,
+        "types": ["KR_MOBILE_PHONE", "KR_RRN"] if hit else [],
+        "classification": "quarantine" if hit or error else "clean",
+    }]
     verdict = "ERROR" if error else "FAIL" if hit else "PASS"
     return {"run_id": run_id, "scanned_at": at, "verdict": verdict, "error": error, "files": files}
 
@@ -130,18 +148,18 @@ def main() -> None:
         write_json(rep / "adequacy_review.json", review(run_id, at, rules))
         write_json(rep / "export_record.json", export_record(run_id, at, "exported"))
         later = at.replace("T14:00", "T14:20")
-        hit = "crisis_signal.csv" if case == "macie" else None
-        error = f"run_id={run_id}/benefit_payment.csv: sha256 mismatch" if case == "error" else None
+        hit = case == "macie"
+        error = f"run_id={run_id}/{TABLE}.csv: sha256 mismatch" if case == "error" else None
         write_json(rep / "macie_result.json", macie(run_id, later, hit, error))
 
         if case == "ok":
-            make_tables(rng, run_id, ROOT / "data" / f"run_id={run_id}")
+            make_table(rng, run_id, ROOT / "data" / TABLE / f"run_id={run_id}")
             # marker the classifier writes once every file of the run is clean
             write_json(ROOT / "results" / f"run_id={run_id}" / "manifest.json", {
                 "run_id": run_id,
                 "generated_at": at.replace("T14:00", "T14:25"),
                 "adequacy_passed": True,
-                "tables": [name.removesuffix(".csv") for name in TABLES],
+                "tables": [TABLE],
             })
 
 

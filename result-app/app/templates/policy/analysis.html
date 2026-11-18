@@ -40,6 +40,6 @@
     <a href="/policy/analyses/{{ req.request_id }}/result.csv" class="krds-btn small secondary">결과 내려받기 (CSV)</a>
   </div>
 </div>
-{% include "policy/_result_" ~ req.scenario ~ ".html" %}
+{% include "policy/_result_check.html" %}
 {% endif %}
 {% endblock %}

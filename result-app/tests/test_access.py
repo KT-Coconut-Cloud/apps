@@ -17,5 +17,5 @@ def test_bad_run_id_is_404(security, run_id):
 
 
 def test_security_cannot_request_analysis(security):
-    res = security.post("/policy/analyses", data={"run_id": "20261112-01", "scenario": "crisis_link_rate"})
+    res = security.post("/policy/analyses", data={"run_id": "20261112-01", "scenario": "livelihood_recheck"})
     assert res.status_code == 403

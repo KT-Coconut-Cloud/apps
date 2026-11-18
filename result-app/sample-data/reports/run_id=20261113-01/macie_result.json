@@ -2,22 +2,10 @@
   "run_id": "20261113-01",
   "scanned_at": "2026-11-13T14:20:00+09:00",
   "verdict": "ERROR",
-  "error": "run_id=20261113-01/benefit_payment.csv: sha256 mismatch",
+  "error": "run_id=20261113-01/livelihood_payment.csv: sha256 mismatch",
   "files": [
     {
-      "key": "data/run_id=20261113-01/citizen.csv",
-      "detected": false,
-      "types": [],
-      "classification": "quarantine"
-    },
-    {
-      "key": "data/run_id=20261113-01/crisis_signal.csv",
-      "detected": false,
-      "types": [],
-      "classification": "quarantine"
-    },
-    {
-      "key": "data/run_id=20261113-01/benefit_payment.csv",
+      "key": "run_id=20261113-01/livelihood_payment.csv",
       "detected": false,
       "types": [],
       "classification": "quarantine"

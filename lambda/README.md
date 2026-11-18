@@ -18,7 +18,7 @@ AWS 측 Lambda 함수 코드. 리소스 생성과 IAM은 AWS 담당이 구성
 ## 흐름
 
 ```text
-온프렘 반출 단계 → coconut-ingest/run_id=<id>/ (CSV 3개, adequacy_review.json, export_record.json 마지막)
+온프렘 반출 단계 → coconut-ingest/run_id=<id>/ (livelihood_payment.csv, adequacy_review.json, export_record.json 마지막)
   → EventBridge (export_record.json 생성)
   → Step Functions
        pii-check → [scan] 60초 대기 ↔ Macie 상태 조회 → pii-classify

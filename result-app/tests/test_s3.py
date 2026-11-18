@@ -12,7 +12,7 @@ from app.main import create_app
 from tests.conftest import login
 
 BUCKET = "clean-bucket"
-CRISIS = {"run_id": "20261112-01", "scenario": "crisis_link_rate", "from": "2026-05", "to": "2026-10", "purpose": "점검"}
+MAIN = {"run_id": "20261112-01", "scenario": "livelihood_recheck", "pay_month": "2025-12", "purpose": "점검"}
 
 
 class FakeLambda:
@@ -78,17 +78,17 @@ def test_request_goes_through_lambda_and_result_is_read_from_bucket(s3_client, d
     login(client, "policy01", "pw-policy")
     assert "20261112-01" in client.get("/policy/datasets").text
 
-    url = client.post("/policy/analyses", data=CRISIS, follow_redirects=False).headers["location"]
+    url = client.post("/policy/analyses", data=MAIN, follow_redirects=False).headers["location"]
     name, payload = fake.calls[0]
     assert name == "analysis-request"
-    assert payload["requested_by"] == "policy01" and payload["params"]["sigungu"] is None
+    assert payload["requested_by"] == "policy01" and payload["params"]["age_group"] is None
 
     # nothing in the bucket yet, the request is not visible
     assert client.get(url).status_code == 404
 
     upload(data_dir)
     text = client.get(url).text
-    assert "시군구, 위기정보 유형별 연계 현황" in text
+    assert "시도별 점검 결과" in text
     assert url.rsplit("/", 1)[1] in client.get("/policy/analyses").text
     assert writes == []
 
@@ -97,5 +97,5 @@ def test_lambda_error_shows_message(s3_client):
     client, fake, _ = s3_client
     fake.lam.submit = lambda payload: {"error": "run_not_ready", "detail": "x"}
     login(client, "policy01", "pw-policy")
-    res = client.post("/policy/analyses", data=CRISIS)
+    res = client.post("/policy/analyses", data=MAIN)
     assert res.status_code == 422 and "분석에 쓸 수 없습니다" in res.text
