@@ -18,7 +18,7 @@ AWS 측 Lambda 함수 코드. 리소스 생성과 IAM은 AWS 담당이 구성
 ## 흐름
 
 ```text
-온프렘 반출 단계 → coconut-pii-ingest/run_id=<id>/ (CSV 3개, adequacy_review.json, export_record.json 마지막)
+온프렘 반출 단계 → coconut-ingest/run_id=<id>/ (livelihood_payment.csv, adequacy_review.json, export_record.json 마지막)
   → EventBridge (export_record.json 생성)
   → Step Functions
        pii-check → [scan] 60초 대기 ↔ Macie 상태 조회 → pii-classify
@@ -26,7 +26,7 @@ AWS 측 Lambda 함수 코드. 리소스 생성과 IAM은 AWS 담당이 구성
                    [skip, 적정성 검토 탈락] → 종료 (보고서만 복사됨)
 
 결과 조회 앱 → analysis-request → Athena 쿼리 시작 (앱에는 바로 "분석 중" 응답)
-  → 쿼리 종료 → EventBridge → analysis-finalize → coconut-pii-clean/results/requests/<요청ID>/
+  → 쿼리 종료 → EventBridge → analysis-finalize → coconut-clean/results/requests/<요청ID>/
 ```
 
 ## 패키징
@@ -45,9 +45,9 @@ Compress-Archive -Path *.py -DestinationPath functions.zip -Force
 | pii-check | `MACIE_ALLOW_LIST_IDS` | Macie 허용 목록 ID (토큰 오탐 방지) |
 | pii-classify | `LANDING_BUCKET`, `CLEAN_BUCKET`, `QUARANTINE_BUCKET` | 반입, 정제, 격리 버킷 |
 | pii-classify | `ALERT_TOPIC_ARN` | SNS `coconut-alerts` ARN |
-| analysis-request | `CLEAN_BUCKET`, `ATHENA_DATABASE`, `ATHENA_WORKGROUP` | 정제 버킷, `coconut_db`, `analysis` |
+| analysis-request | `CLEAN_BUCKET`, `ATHENA_DATABASE`, `ATHENA_WORKGROUP` | 정제 버킷, `coconut_db`, `coconut-analysis` |
 | analysis-request | `MIN_CELL_SIZE` | 비공개 기준, 기본 5 |
-| analysis-finalize | `CLEAN_BUCKET`, `ATHENA_WORKGROUP` | 정제 버킷, `analysis` |
+| analysis-finalize | `CLEAN_BUCKET`, `ATHENA_WORKGROUP` | 정제 버킷, `coconut-analysis` |
 
 | 함수 | 제한 시간 | 메모리 |
 | --- | --- | --- |
@@ -66,7 +66,7 @@ Compress-Archive -Path *.py -DestinationPath functions.zip -Force
 
 ## AWS 설정
 
-- EventBridge 규칙 1: `coconut-pii-ingest`의 Object Created, 키 suffix `export_record.json` → 상태 머신
+- EventBridge 규칙 1: `coconut-ingest`의 Object Created, 키 suffix `export_record.json` → 상태 머신
 - EventBridge 규칙 2: source `aws.athena`, detail-type `Athena Query State Change`, `currentState`가 `SUCCEEDED`, `FAILED`, `CANCELLED` → analysis-finalize
 - Macie 사용자 지정 식별자 이름은 `KR_RRN`, `KR_MOBILE_PHONE` (결과 조회 앱이 이 이름으로 표시)
 - Athena 테이블은 `sql/tables.sql`로 생성. `run_id`는 partition projection이라 회차가 늘어도 추가 작업 없음

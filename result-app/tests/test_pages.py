@@ -14,14 +14,14 @@ def test_new_analysis_form_lists_runs_and_templates(policy):
     text = policy.get("/policy/analyses/new?run_id=20261109-01").text
     assert '<option value="20261109-01" selected>' in text and "분석 목적" in text
     assert "2026-11-12 (최신)" in text
-    assert "위기가구 지원 연계율" in text and "기초생활보장 수급 현황" in text
+    assert "생계급여 재확인 필요 지급 건" in text and "해외 장기 체류 중 생계급여 지급" in text
 
 
 def test_params_fragment_follows_template(policy):
-    res = policy.get("/policy/analyses/new/params?scenario=basic_living_status", headers={"HX-Request": "true"})
+    res = policy.get("/policy/analyses/new/params?scenario=obligor_asset_check", headers={"HX-Request": "true"})
     assert "<html" not in res.text
-    assert "가구 유형" in res.text and "위기정보 유형" not in res.text
-    assert 'value="2023"' in res.text and 'value="2025"' in res.text
+    assert 'id="p-region"' in res.text and 'id="p-household_size"' not in res.text
+    assert 'value="2025-12"' in res.text
 
 
 def test_security_run_status(security):
@@ -29,6 +29,13 @@ def test_security_run_status(security):
     assert text.count("반출 완료") >= 2
     assert "적정성 검토에서 중단" in text and "Macie 검사에서 탐지되어 격리" in text
     assert "rules-v1.2" in text
+
+
+def test_macie_error_is_not_quarantine(security):
+    text = security.get("/security/runs").text
+    assert "Macie 검사를 마치지 못해 격리 버킷에 보관" in text
+    detail = security.get("/security/runs/20261113-01").text
+    assert "검증 오류" in detail and "sha256 mismatch" in detail
 
 
 def test_aborted_run_has_no_export(security):

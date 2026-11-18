@@ -15,6 +15,21 @@
 - 조회 범위: 정제 버킷 `results/`, `reports/`
 
 
+## 분석 템플릿
+
+대상 테이블: `livelihood_payment` (생계급여 지급 건 1행, 지급월 2025-12)
+
+| 템플릿 | 집계 단위 | 점검 컬럼 |
+| --- | --- | --- |
+| 생계급여 재확인 필요 지급 건 | 시도 | `income_ratio_band` |
+| 부양의무자 고재산 기준 점검 | 가구원 수 | `obligor_asset_band` |
+| 사망 이후 생계급여 지급 | 연령대 | `death_month` |
+| 해외 장기 체류 중 생계급여 지급 | 시도 | `abroad_days_band` |
+
+- 템플릿 정의: `app/catalog.py`, Athena 쿼리: `../lambda/catalog.py` (두 파일 함께 수정)
+- 샘플 데이터: `python scripts/make_sample_data.py`
+
+
 ## Stack
 
 FastAPI, Jinja2, htmx, KRDS, ECharts, pandas, boto3, pytest

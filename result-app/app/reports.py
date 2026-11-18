@@ -42,7 +42,14 @@ class MacieFile(BaseModel):
 class MacieResult(BaseModel):
     run_id: str
     scanned_at: datetime
+    # ERROR: scan never finished (hash mismatch, failed job), files were held back unchecked
+    verdict: Literal["PASS", "FAIL", "ERROR"] | None = None
+    error: str | None = None
     files: list[MacieFile]
+
+    @property
+    def failed(self) -> bool:
+        return self.verdict == "ERROR"
 
 
 CHECK_LABELS = {

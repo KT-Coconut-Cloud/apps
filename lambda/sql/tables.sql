@@ -1,49 +1,27 @@
--- Athena tables over the clean bucket. Replace <CLEAN_BUCKET> and run once per table.
+-- Athena table over the clean bucket. Replace <CLEAN_BUCKET> and run once.
 -- run_id uses partition projection, so new runs need no ALTER TABLE or crawler.
+-- Columns follow the export file; the last three are for the added templates.
 
-CREATE EXTERNAL TABLE IF NOT EXISTS citizen (
-  citizen_id     string,
-  sigungu        string,
-  household_type string
+CREATE EXTERNAL TABLE IF NOT EXISTS livelihood_payment (
+  payment_token      string,
+  household_token    string,
+  region             string,
+  age_group          string,
+  gender             string,
+  pay_month          string,
+  benefit_type       string,
+  household_size     string,
+  income_ratio_band  string,
+  obligor_asset_band string,
+  death_month        string,
+  abroad_days_band   string
 )
 PARTITIONED BY (run_id string)
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
-LOCATION 's3://<CLEAN_BUCKET>/data/citizen/'
+LOCATION 's3://<CLEAN_BUCKET>/data/livelihood_payment/'
 TBLPROPERTIES (
   'skip.header.line.count' = '1',
   'projection.enabled' = 'true',
   'projection.run_id.type' = 'injected',
-  'storage.location.template' = 's3://<CLEAN_BUCKET>/data/citizen/run_id=${run_id}/'
-);
-
-CREATE EXTERNAL TABLE IF NOT EXISTS crisis_signal (
-  citizen_id   string,
-  signal_month string,
-  crisis_type  string,
-  linked       string
-)
-PARTITIONED BY (run_id string)
-ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
-LOCATION 's3://<CLEAN_BUCKET>/data/crisis_signal/'
-TBLPROPERTIES (
-  'skip.header.line.count' = '1',
-  'projection.enabled' = 'true',
-  'projection.run_id.type' = 'injected',
-  'storage.location.template' = 's3://<CLEAN_BUCKET>/data/crisis_signal/run_id=${run_id}/'
-);
-
-CREATE EXTERNAL TABLE IF NOT EXISTS benefit_payment (
-  citizen_id     string,
-  year           string,
-  benefit_type   string,
-  monthly_amount string
-)
-PARTITIONED BY (run_id string)
-ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
-LOCATION 's3://<CLEAN_BUCKET>/data/benefit_payment/'
-TBLPROPERTIES (
-  'skip.header.line.count' = '1',
-  'projection.enabled' = 'true',
-  'projection.run_id.type' = 'injected',
-  'storage.location.template' = 's3://<CLEAN_BUCKET>/data/benefit_payment/run_id=${run_id}/'
+  'storage.location.template' = 's3://<CLEAN_BUCKET>/data/livelihood_payment/run_id=${run_id}/'
 );

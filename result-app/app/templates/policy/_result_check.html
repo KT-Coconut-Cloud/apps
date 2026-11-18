@@ -1,0 +1,43 @@
+{% from "_macros.html" import count %}
+{% set lb = scenario.labels %}
+<ul class="rv-stats">
+  <li><span>{{ lb[scenario.total] }}</span><strong>{{ view.summary.payments | num }}</strong></li>
+  <li><span>{{ lb[scenario.focus] }}</span><strong class="rv-warning">{{ view.summary.flagged | num }}</strong></li>
+  <li><span>{{ lb[scenario.focus] }} 비율</span><strong>{{ view.summary.rate if view.summary.rate is not none else '-' }}%</strong></li>
+</ul>
+<p class="rv-note">판정 기준: {{ scenario.basis }}</p>
+
+<section class="rv-section">
+  <h2 class="rv-section-title">{{ lb[view.key] }}별 {{ lb[scenario.focus] }} 비율</h2>
+  {% if view.chart.labels %}
+  <div class="rv-chart" data-chart='{"type":"bar-h","labels":{{ view.chart.labels | tojson }},"values":{{ view.chart.data | tojson }},"unit":"%"}'></div>
+  {% else %}<div class="rv-empty">표시할 수 있는 칸이 없습니다.</div>{% endif %}
+</section>
+
+<section class="rv-section">
+  <h2 class="rv-section-title">{{ lb[view.key] }}별 점검 결과</h2>
+  <div class="krds-table-wrap">
+    <table class="tbl col data">
+      <caption>{{ lb[view.key] }}별 {% for c in scenario.columns[1:] %}{{ lb[c] }}{% if not loop.last %}, {% endif %}{% endfor %} 건수와 {{ lb[scenario.focus] }} 비율</caption>
+      <thead>
+        <tr>
+          <th scope="col">{{ lb[view.key] }}</th>
+          {% for c in scenario.columns[1:] %}<th scope="col" class="rv-num-h">{{ lb[c] }}</th>{% endfor %}
+          <th scope="col" class="rv-num-h">{{ lb[scenario.focus] }} 비율</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in view.rows %}
+        <tr>
+          <th scope="row">{{ r[view.key] }}</th>
+          {% for c in scenario.columns[1:] %}<td class="rv-num">{{ count(r[c], min_cell) }}</td>{% endfor %}
+          <td class="rv-num">{{ '%.1f%%' | format(r.rate) if r.rate is not none else '-' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="{{ scenario.columns | length + 1 }}" class="rv-empty-cell">조건에 맞는 결과가 없습니다.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="rv-legend">X: {{ min_cell }} 미만이라 비공개</p>
+</section>

@@ -1,0 +1,12 @@
+{
+  "run_id": "20261113-01",
+  "executed_at": "2026-11-13T14:00:00+09:00",
+  "status": "exported",
+  "files": [
+    {
+      "key": "run_id=20261113-01/livelihood_payment.csv",
+      "rows": 2000,
+      "sha256": "1329e2499d3c8e508f0df4c37f1ff0630d1446d9bcf2e212c0d0ae33cb9977b2"
+    }
+  ]
+}
