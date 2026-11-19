@@ -4,6 +4,10 @@ import re
 from dataclasses import dataclass
 
 TABLE = "livelihood_payment"
+BASE_COLUMNS = (
+    "payment_token", "household_token", "region", "age_group", "gender", "pay_month", "benefit_type",
+    "household_size", "income_ratio_band",
+)
 
 REGIONS = [
     "서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", "대전광역시", "울산광역시",
@@ -39,6 +43,8 @@ class Scenario:
     derived: tuple[str, ...] = ()
     # first column is the grouping key; each flag is a condition counted per group
     flags: tuple[tuple[str, str], ...] = ()
+    # columns beyond BASE_COLUMNS the run's export file must have
+    requires: tuple[str, ...] = ()
 
 
 PAY_MONTH = Param("pay_month", "month", required=True)
@@ -48,10 +54,10 @@ HOUSEHOLD_SIZE = Param("household_size", "choice", tuple(HOUSEHOLD_SIZES))
 GENDER = Param("gender", "choice", tuple(GENDERS))
 
 
-def _scenario(key: str, params: tuple, group: str, flags: tuple, total: bool = True) -> Scenario:
+def _scenario(key: str, params: tuple, group: str, flags: tuple, total: bool = True, requires: tuple = ()) -> Scenario:
     names = tuple(name for name, _ in flags)
     counts = (("payments",) if total else ()) + names
-    return Scenario(key=key, params=params, columns=(group, *counts), counts=counts, flags=flags)
+    return Scenario(key=key, params=params, columns=(group, *counts), counts=counts, flags=flags, requires=requires)
 
 
 CHECK = (
@@ -69,7 +75,25 @@ CATALOG = {s.key: s for s in (
         ("over_100_120", "income_ratio_band = 'GT100_LE120'"),
         ("over_120", "income_ratio_band = 'GT120'"),
     ), total=False),
+    _scenario("obligor_asset_check", (PAY_MONTH, REGION, AGE_GROUP), "household_size", (
+        ("no_obligor", "obligor_asset_band = 'NONE'"),
+        ("within", "obligor_asset_band = 'WITHIN'"),
+        ("over", "obligor_asset_band = 'OVER'"),
+        ("no_data", "obligor_asset_band = 'NO_DATA'"),
+    ), requires=("obligor_asset_band",)),
+    _scenario("paid_after_death", (PAY_MONTH, REGION), "age_group", (
+        ("after_death", "death_month <> '' AND death_month < pay_month"),
+        ("same_month", "death_month = pay_month"),
+    ), requires=("death_month",)),
+    _scenario("long_stay_abroad", (PAY_MONTH, AGE_GROUP), "region", (
+        ("abroad", "abroad_days_band IN ('LE60', 'GT60')"),
+        ("over_60", "abroad_days_band = 'GT60'"),
+    ), requires=("abroad_days_band",)),
 )}
+
+
+def supports(scenario: Scenario, header: list[str] | None) -> bool:
+    return set(scenario.requires) <= set(header or BASE_COLUMNS)
 
 # templates that count only some rows filter them here as well
 ROW_FILTER = {"recheck_excess": "income_ratio_band IN ('GT100_LE120', 'GT120')"}

@@ -142,3 +142,13 @@ def test_other_events_are_ignored(ready, event):
     use(mods, FakeAthena())
     mods["analyze"].handler(REQUEST, Context())
     assert mods["finalize"].handler(event, None) is None
+
+def test_template_needs_its_columns(ready):
+    s3, mods = ready
+    use(mods, fake := FakeAthena())
+    s3.put_object(Bucket=CLEAN, Key=f"data/livelihood_payment/run_id={RUN}/livelihood_payment.csv",
+                  Body=",".join(mods["catalog"].BASE_COLUMNS).encode() + b"\n")
+    out = mods["analyze"].handler({**REQUEST, "scenario": "paid_after_death"}, Context())
+    assert out["error"] == "template_unavailable" and not fake.started
+    assert mods["analyze"].handler(REQUEST, Context())["status"] == "running"
+

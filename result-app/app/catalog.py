@@ -1,14 +1,19 @@
 """Analysis templates the policy team can request.
 
 The real list lives with the registered Athena queries; this copy must match it.
-All templates read the single exported table livelihood_payment, one row per
-livelihood benefit payment, and only the columns the pipeline exports.
+All templates read the exported table livelihood_payment, one row per livelihood
+benefit payment. A template that needs a column outside BASE_COLUMNS lists it in
+requires, and is offered only for runs whose export file has that column.
 """
 
 import re
 from dataclasses import dataclass, field
 
 TABLE = "livelihood_payment"
+BASE_COLUMNS = (
+    "payment_token", "household_token", "region", "age_group", "gender", "pay_month", "benefit_type",
+    "household_size", "income_ratio_band",
+)
 
 REGIONS = [
     "서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", "대전광역시", "울산광역시",
@@ -53,6 +58,7 @@ class Scenario:
     total: str = "payments"
     focus: str = ""
     basis: str = ""
+    requires: tuple[str, ...] = field(default=())
 
 
 PAY_MONTH = Param("pay_month", "지급월", "month", required=True, default="2025-12")
@@ -111,7 +117,50 @@ CATALOG = {
         focus="over_120",
         basis="소득인정액이 선정기준의 100% 초과 120% 이하면 100~120%, 120%를 넘으면 120% 초과",
     ),
+    "obligor_asset_check": Scenario(
+        key="obligor_asset_check",
+        title="부양의무자 고재산 기준 점검",
+        description="부양의무자의 일반재산이 12억 원을 넘는데 생계급여가 지급된 건을 가구원 수별로 봅니다.",
+        params=(PAY_MONTH, REGION, AGE_GROUP),
+        columns=("household_size", "payments", "no_obligor", "within", "over", "no_data"),
+        counts=("payments", "no_obligor", "within", "over", "no_data"),
+        labels={"household_size": "가구원 수", "payments": "지급 건", "no_obligor": "부양의무자 없음",
+                "within": "기준 이내", "over": "12억 원 초과", "no_data": "자료 부족"},
+        focus="over",
+        basis="생계급여는 부양의무자 기준이 폐지됐지만 부양의무자가 고소득(연 1억 3천만 원 초과) 또는 고재산(일반재산 12억 원 초과)이면 지원 제외",
+        requires=("obligor_asset_band",),
+    ),
+    "paid_after_death": Scenario(
+        key="paid_after_death",
+        title="사망 이후 생계급여 지급",
+        description="사망 신고된 달 이후에 생계급여가 지급된 건을 연령대별로 봅니다.",
+        params=(PAY_MONTH, REGION),
+        columns=("age_group", "payments", "after_death", "same_month"),
+        counts=("payments", "after_death", "same_month"),
+        labels={"age_group": "연령대", "payments": "지급 건", "after_death": "사망 이후 지급", "same_month": "사망 월 지급(참고)"},
+        focus="after_death",
+        basis="사망 월이 지급월보다 앞서면 사망 이후 지급, 같은 달이면 참고로만 집계",
+        requires=("death_month",),
+    ),
+    "long_stay_abroad": Scenario(
+        key="long_stay_abroad",
+        title="해외 장기 체류 중 생계급여 지급",
+        description="지급월 기준 최근 180일 동안 해외 체류일이 60일을 넘은 수급자에게 지급된 건을 시도별로 봅니다.",
+        params=(PAY_MONTH, AGE_GROUP),
+        columns=("region", "payments", "abroad", "over_60"),
+        counts=("payments", "abroad", "over_60"),
+        labels={"region": "시도", "payments": "지급 건", "abroad": "해외 체류 이력", "over_60": "60일 초과"},
+        focus="over_60",
+        basis="최근 180일 중 해외 체류 60일 초과는 개별가구에서 제외 (국민기초생활 보장법 시행령 제2조제2항제2호)",
+        requires=("abroad_days_band",),
+    ),
 }
+
+
+def available(columns: set[str] | None) -> dict[str, Scenario]:
+    """Templates the run can answer. Unknown columns mean only the base templates."""
+    have = set(columns or BASE_COLUMNS)
+    return {k: s for k, s in CATALOG.items() if set(s.requires) <= have}
 
 
 def clean_params(scenario: Scenario, raw: dict) -> dict:

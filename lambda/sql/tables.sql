@@ -1,6 +1,8 @@
 -- Athena table over the clean bucket. Replace <CLEAN_BUCKET> and run once.
 -- run_id uses partition projection, so new runs need no ALTER TABLE or crawler.
--- Columns follow the export file.
+-- Columns follow the export file. CSV columns are read by position, so a column
+-- added to the export goes at the end, in the same order as here. Runs exported
+-- before a column existed read it as empty.
 
 CREATE EXTERNAL TABLE IF NOT EXISTS livelihood_payment (
   payment_token      string,
@@ -11,7 +13,10 @@ CREATE EXTERNAL TABLE IF NOT EXISTS livelihood_payment (
   pay_month          string,
   benefit_type       string,
   household_size     string,
-  income_ratio_band  string
+  income_ratio_band  string,
+  obligor_asset_band string,
+  death_month        string,
+  abroad_days_band   string
 )
 PARTITIONED BY (run_id string)
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'

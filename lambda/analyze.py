@@ -6,13 +6,22 @@ import os
 import boto3
 from botocore.exceptions import ClientError
 
-from catalog import CATALOG, InvalidParams, build_query, clean_params
+from catalog import CATALOG, TABLE, InvalidParams, build_query, clean_params, supports
 from common import RUN_ID, env, get_json, now, put_json, s3
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 athena = boto3.client("athena")
+
+
+def export_header(bucket: str, run_id: str) -> list[str] | None:
+    try:
+        obj = s3.get_object(Bucket=bucket, Key=f"data/{TABLE}/run_id={run_id}/{TABLE}.csv", Range="bytes=0-4095")
+    except s3.exceptions.NoSuchKey:
+        return None
+    first = obj["Body"].read().decode("utf-8", errors="ignore").splitlines()[:1]
+    return [c.strip().lstrip("\ufeff") for c in first[0].split(",")] if first else None
 
 
 def claim_request_id(bucket: str, request: dict) -> str:
@@ -51,6 +60,8 @@ def handler(event, context):
     manifest = get_json(bucket, f"results/run_id={run_id}/manifest.json") if RUN_ID.match(run_id) else None
     if not manifest or not manifest.get("adequacy_passed"):
         return {"error": "run_not_ready", "detail": run_id}
+    if not supports(scenario, export_header(bucket, run_id)):
+        return {"error": "template_unavailable", "detail": scenario.key}
 
     purpose = (event.get("purpose") or "").strip()
     requested_by = event.get("requested_by")
