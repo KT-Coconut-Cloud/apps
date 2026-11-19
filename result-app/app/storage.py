@@ -4,6 +4,7 @@ from io import StringIO
 from pathlib import Path
 
 import pandas as pd
+from botocore.exceptions import ClientError
 
 RUN_ID = re.compile(r"^\d{8}-\d{2}$")
 REQUEST_ID = re.compile(r"^req-\d{8}-\d{4}$")
@@ -111,7 +112,8 @@ class S3Store(Store):
         # the header is all we need, so skip the rest of a large export
         try:
             obj = self.client.get_object(Bucket=self.bucket, Key=self.prefix + key, Range="bytes=0-4095")
-        except self.client.exceptions.NoSuchKey:
+        except ClientError:
+            # no file or no read access: callers fall back to the base templates
             return None
         return obj["Body"].read().decode("utf-8", errors="ignore")
 
