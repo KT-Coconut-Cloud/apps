@@ -4,6 +4,10 @@ import re
 from dataclasses import dataclass
 
 TABLE = "livelihood_payment"
+BASE_COLUMNS = (
+    "payment_token", "household_token", "region", "age_group", "gender", "pay_month", "benefit_type",
+    "household_size", "income_ratio_band",
+)
 
 REGIONS = [
     "서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", "대전광역시", "울산광역시",
@@ -11,7 +15,8 @@ REGIONS = [
     "경상북도", "경상남도", "제주특별자치도",
 ]
 AGE_GROUPS = ["20대", "30대", "40대", "50대", "60대", "70대", "80대 이상"]
-HOUSEHOLD_SIZES = ["1", "2", "3", "4", "5+"]
+HOUSEHOLD_SIZES = ["1", "2", "3", "4"]
+GENDERS = ["남", "여"]
 
 MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 YEAR = re.compile(r"^20\d{2}$")
@@ -38,41 +43,60 @@ class Scenario:
     derived: tuple[str, ...] = ()
     # first column is the grouping key; each flag is a condition counted per group
     flags: tuple[tuple[str, str], ...] = ()
+    # columns beyond BASE_COLUMNS the run's export file must have
+    requires: tuple[str, ...] = ()
 
 
 PAY_MONTH = Param("pay_month", "month", required=True)
 REGION = Param("region", "choice", tuple(REGIONS))
 AGE_GROUP = Param("age_group", "choice", tuple(AGE_GROUPS))
 HOUSEHOLD_SIZE = Param("household_size", "choice", tuple(HOUSEHOLD_SIZES))
+GENDER = Param("gender", "choice", tuple(GENDERS))
 
 
-def _scenario(key: str, params: tuple, group: str, flags: tuple) -> Scenario:
+def _scenario(key: str, params: tuple, group: str, flags: tuple, total: bool = True, requires: tuple = ()) -> Scenario:
     names = tuple(name for name, _ in flags)
-    return Scenario(key=key, params=params, columns=(group, "payments", *names),
-                    counts=("payments", *names), flags=flags)
+    counts = (("payments",) if total else ()) + names
+    return Scenario(key=key, params=params, columns=(group, *counts), counts=counts, flags=flags, requires=requires)
 
+
+CHECK = (
+    ("within", "income_ratio_band IN ('LE80', 'GT80_LE100')"),
+    ("recheck", "income_ratio_band IN ('GT100_LE120', 'GT120')"),
+    ("no_data", "income_ratio_band = 'NO_DATA'"),
+)
 
 CATALOG = {s.key: s for s in (
-    _scenario("livelihood_recheck", (PAY_MONTH, HOUSEHOLD_SIZE, AGE_GROUP), "region", (
-        ("within", "income_ratio_band IN ('LE80', 'GT80_LE100')"),
+    _scenario("livelihood_recheck", (PAY_MONTH, HOUSEHOLD_SIZE, AGE_GROUP), "region", CHECK),
+    _scenario("recheck_by_household", (PAY_MONTH, REGION), "household_size", CHECK),
+    _scenario("recheck_by_age", (PAY_MONTH, REGION, GENDER), "age_group", CHECK),
+    _scenario("recheck_excess", (PAY_MONTH, HOUSEHOLD_SIZE), "region", (
         ("recheck", "income_ratio_band IN ('GT100_LE120', 'GT120')"),
-        ("no_data", "income_ratio_band = 'NO_DATA'"),
-    )),
+        ("over_100_120", "income_ratio_band = 'GT100_LE120'"),
+        ("over_120", "income_ratio_band = 'GT120'"),
+    ), total=False),
     _scenario("obligor_asset_check", (PAY_MONTH, REGION, AGE_GROUP), "household_size", (
         ("no_obligor", "obligor_asset_band = 'NONE'"),
         ("within", "obligor_asset_band = 'WITHIN'"),
         ("over", "obligor_asset_band = 'OVER'"),
         ("no_data", "obligor_asset_band = 'NO_DATA'"),
-    )),
+    ), requires=("obligor_asset_band",)),
     _scenario("paid_after_death", (PAY_MONTH, REGION), "age_group", (
         ("after_death", "death_month <> '' AND death_month < pay_month"),
         ("same_month", "death_month = pay_month"),
-    )),
+    ), requires=("death_month",)),
     _scenario("long_stay_abroad", (PAY_MONTH, AGE_GROUP), "region", (
         ("abroad", "abroad_days_band IN ('LE60', 'GT60')"),
         ("over_60", "abroad_days_band = 'GT60'"),
-    )),
+    ), requires=("abroad_days_band",)),
 )}
+
+
+def supports(scenario: Scenario, header: list[str] | None) -> bool:
+    return set(scenario.requires) <= set(header or BASE_COLUMNS)
+
+# templates that count only some rows filter them here as well
+ROW_FILTER = {"recheck_excess": "income_ratio_band IN ('GT100_LE120', 'GT120')"}
 
 
 def clean_params(scenario: Scenario, raw: dict) -> dict:
@@ -105,10 +129,14 @@ def _inner_query(scenario: Scenario, run_id: str, p: dict) -> tuple[str, list[st
         if param.kind == "choice" and p.get(param.name):
             where.append(f"{param.name} = ?")
             args.append(_text(p[param.name]))
-    counts = ",\n         ".join(f"COUNT_IF({rule}) AS {name}" for name, rule in scenario.flags)
+    if scenario.key in ROW_FILTER:
+        where.append(ROW_FILTER[scenario.key])
+    counts = [f"COUNT_IF({rule}) AS {name}" for name, rule in scenario.flags]
+    if "payments" in scenario.counts:
+        counts.insert(0, "COUNT(*) AS payments")
+    counts = ",\n         ".join(counts)
     return f"""
   SELECT {group},
-         COUNT(*) AS payments,
          {counts}
   FROM {TABLE}
   WHERE run_id = '{run_id}'

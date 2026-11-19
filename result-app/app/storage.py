@@ -4,6 +4,7 @@ from io import StringIO
 from pathlib import Path
 
 import pandas as pd
+from botocore.exceptions import ClientError
 
 RUN_ID = re.compile(r"^\d{8}-\d{2}$")
 REQUEST_ID = re.compile(r"^req-\d{8}-\d{4}$")
@@ -48,6 +49,15 @@ class Store:
         text = self.read_text(key)
         return pd.read_csv(StringIO(text)) if text is not None else None
 
+    def read_head(self, key: str) -> str | None:
+        return self.read_text(key)
+
+    def read_header(self, key: str) -> list[str] | None:
+        text = self.read_head(key)
+        if not text:
+            return None
+        return [c.strip().lstrip("\ufeff") for c in text.splitlines()[0].split(",")]
+
     def run_ids(self) -> list[str]:
         ids = [d.removeprefix("run_id=") for d in self.list_dirs() if d.startswith("run_id=")]
         return sorted((i for i in ids if RUN_ID.match(i)), reverse=True)
@@ -68,6 +78,13 @@ class LocalStore(Store):
     def read_text(self, key: str) -> str | None:
         path = self._path(key)
         return path.read_text(encoding="utf-8") if path.is_file() else None
+
+    def read_head(self, key: str) -> str | None:
+        path = self._path(key)
+        if not path.is_file():
+            return None
+        with path.open(encoding="utf-8") as f:
+            return f.readline()
 
     def list_dirs(self, prefix: str = "") -> list[str]:
         path = self._path(prefix)
@@ -90,6 +107,15 @@ class S3Store(Store):
         except self.client.exceptions.NoSuchKey:
             return None
         return obj["Body"].read().decode("utf-8")
+
+    def read_head(self, key: str) -> str | None:
+        # the header is all we need, so skip the rest of a large export
+        try:
+            obj = self.client.get_object(Bucket=self.bucket, Key=self.prefix + key, Range="bytes=0-4095")
+        except ClientError:
+            # no file or no read access: callers fall back to the base templates
+            return None
+        return obj["Body"].read().decode("utf-8", errors="ignore")
 
     def _list(self, prefix: str) -> tuple[list[str], list[str]]:
         full = self.prefix + (prefix.strip("/") + "/" if prefix else "")

@@ -14,11 +14,11 @@ def test_new_analysis_form_lists_runs_and_templates(policy):
     text = policy.get("/policy/analyses/new?run_id=20261109-01").text
     assert '<option value="20261109-01" selected>' in text and "분석 목적" in text
     assert "2026-11-12 (최신)" in text
-    assert "생계급여 재확인 필요 지급 건" in text and "해외 장기 체류 중 생계급여 지급" in text
+    assert "시도별 생계급여 재확인 필요 지급 건" in text and "재확인 필요 건의 기준 초과 정도" in text
 
 
 def test_params_fragment_follows_template(policy):
-    res = policy.get("/policy/analyses/new/params?scenario=obligor_asset_check", headers={"HX-Request": "true"})
+    res = policy.get("/policy/analyses/new/params?scenario=recheck_by_household", headers={"HX-Request": "true"})
     assert "<html" not in res.text
     assert 'id="p-region"' in res.text and 'id="p-household_size"' not in res.text
     assert 'value="2025-12"' in res.text

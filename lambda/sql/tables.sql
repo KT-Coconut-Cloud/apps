@@ -1,6 +1,8 @@
 -- Athena table over the clean bucket. Replace <CLEAN_BUCKET> and run once.
 -- run_id uses partition projection, so new runs need no ALTER TABLE or crawler.
--- Columns follow the export file; the last three are for the added templates.
+-- Columns follow the export file. CSV columns are read by position, so a column
+-- added to the export goes at the end, in the same order as here. Runs exported
+-- before a column existed read it as empty.
 
 CREATE EXTERNAL TABLE IF NOT EXISTS livelihood_payment (
   payment_token      string,

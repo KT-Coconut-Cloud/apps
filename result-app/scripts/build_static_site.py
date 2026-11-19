@@ -27,12 +27,12 @@ from app.main import create_app  # noqa: E402
 DEMO_REQUESTS = [
     {"run_id": "20261112-01", "scenario": "livelihood_recheck", "pay_month": "2025-12",
      "purpose": "2025년 12월 생계급여 지급 건 사후 점검"},
-    {"run_id": "20261112-01", "scenario": "obligor_asset_check", "pay_month": "2025-12",
-     "purpose": "부양의무자 고재산 기준 적용 누락 여부 확인"},
-    {"run_id": "20261112-01", "scenario": "paid_after_death", "pay_month": "2025-12",
-     "purpose": "사망자 급여 지급 중지 처리 점검"},
-    {"run_id": "20261112-01", "scenario": "long_stay_abroad", "pay_month": "2025-12", "age_group": "60대",
-     "purpose": "해외 장기 체류 수급자 확인 조사 대상 파악"},
+    {"run_id": "20261112-01", "scenario": "recheck_by_household", "pay_month": "2025-12",
+     "purpose": "가구원 수별 재확인 필요 비율 비교"},
+    {"run_id": "20261112-01", "scenario": "recheck_by_age", "pay_month": "2025-12",
+     "purpose": "고령 수급 가구 재확인 필요 현황 확인"},
+    {"run_id": "20261112-01", "scenario": "recheck_excess", "pay_month": "2025-12",
+     "purpose": "재확인 조사 우선순위 선정"},
 ]
 FIRST = next(iter(CATALOG))
 

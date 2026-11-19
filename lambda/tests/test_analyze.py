@@ -6,8 +6,8 @@ from tests.conftest import CLEAN, Context, keys, put, read
 RUN = "20261117-01"
 REQUEST = {
     "run_id": RUN,
-    "scenario": "obligor_asset_check",
-    "params": {"pay_month": "2025-12", "region": "서울특별시", "age_group": None},
+    "scenario": "recheck_by_household",
+    "params": {"pay_month": "2025-12", "region": "서울특별시"},
     "purpose": "점검",
     "requested_by": "policy01",
 }
@@ -107,17 +107,17 @@ def test_rejected_query_is_recorded_as_failed(ready):
 def test_finished_query_is_published(ready):
     s3, mods = ready
     use(mods, FakeAthena(rows(
-        ("household_size", "payments", "no_obligor", "within", "over", "no_data"),
-        ("1", "320", "170", "140", "6", "4"),
-        ("2", "75", "40", "30", None, None),
-        ("3", None, "0", None, "0", "0"),
+        ("household_size", "payments", "within", "recheck", "no_data"),
+        ("1", "320", "250", "66", None),
+        ("2", "75", "60", None, None),
+        ("3", None, None, "0", "0"),
     )))
     rid = mods["analyze"].handler(REQUEST, Context())["request_id"]
     out = mods["finalize"].handler(ended("SUCCEEDED"), None)
-    assert out["status"] == "succeeded" and out["rows"] == 3 and out["suppressed_cells"] == 4
+    assert out["status"] == "succeeded" and out["rows"] == 3 and out["suppressed_cells"] == 5
 
     text = s3.get_object(Bucket=CLEAN, Key=f"results/requests/{rid}/result.csv")["Body"].read().decode()
-    assert text.splitlines()[2:] == ["2,75,40,30,,", "3,,0,,0,0"]
+    assert text.splitlines()[2:] == ["2,75,60,,", "3,,,0,0"]
     assert read(s3, CLEAN, f"results/requests/{rid}/manifest.json")["status"] == "succeeded"
     record = read(s3, CLEAN, f"reports/analysis_requests/{rid}.json")
     assert record["status"] == "succeeded" and record["purpose"] == "점검"
@@ -142,3 +142,13 @@ def test_other_events_are_ignored(ready, event):
     use(mods, FakeAthena())
     mods["analyze"].handler(REQUEST, Context())
     assert mods["finalize"].handler(event, None) is None
+
+def test_template_needs_its_columns(ready):
+    s3, mods = ready
+    use(mods, fake := FakeAthena())
+    s3.put_object(Bucket=CLEAN, Key=f"data/livelihood_payment/run_id={RUN}/livelihood_payment.csv",
+                  Body=",".join(mods["catalog"].BASE_COLUMNS).encode() + b"\n")
+    out = mods["analyze"].handler({**REQUEST, "scenario": "paid_after_death"}, Context())
+    assert out["error"] == "template_unavailable" and not fake.started
+    assert mods["analyze"].handler(REQUEST, Context())["status"] == "running"
+

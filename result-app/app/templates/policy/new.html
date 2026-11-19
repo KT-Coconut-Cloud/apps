@@ -10,13 +10,15 @@
 {% if error %}<div class="rv-notice rv-notice-danger" role="alert">{{ error }}</div>{% endif %}
 
 {% if runs %}
-<form method="post" action="/policy/analyses" class="rv-form">
+<form id="analysis-form" method="post" action="/policy/analyses" class="rv-form">
   <div class="rv-fields rv-fields-2">
     <div class="form-group">
       <div class="form-tit"><label for="f-run">데이터 기준일 <span class="rv-req" aria-label="필수">*</span></label></div>
       <div class="form-conts">
-        <select id="f-run" name="run_id" class="krds-form-select" required>
-          {% for r in runs %}<option value="{{ r.run_id }}"{% if values.get('run_id') == r.run_id %} selected{% endif %}>{{ run_day(r.run_id) }}{% if loop.first %} (최신){% endif %}</option>{% endfor %}
+        <select id="f-run" name="run_id" class="krds-form-select" required
+                hx-get="/policy/analyses/new" hx-include="[name=purpose]" hx-trigger="change"
+                hx-select="#analysis-form" hx-target="#analysis-form" hx-swap="outerHTML" hx-push-url="true">
+          {% for r in runs %}<option value="{{ r.run_id }}"{% if run_id == r.run_id %} selected{% endif %}>{{ run_day(r.run_id) }}{% if loop.first %} (최신){% endif %}</option>{% endfor %}
         </select>
       </div>
     </div>

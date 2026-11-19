@@ -2,10 +2,10 @@
 
 data/ stands in for the pseudonymized livelihood_payment table Athena queries, in
 the layout the classifier writes to the clean bucket. Only the local fake Lambda
-reads it; the app itself never does.
+reads the rows; the app only reads the header to see which templates a run supports.
 
-Rows follow the export columns of the pipeline. The last three columns are
-the extra ones the added templates need.
+Rows follow the export columns of the pipeline. Runs listed in EXTENDED also get the
+columns the added templates need, appended after the base ones.
 """
 
 import csv
@@ -29,15 +29,17 @@ REGIONS = {
     "전북특별자치도": 68_305,
 }
 AGE = {"20대": 5, "30대": 7, "40대": 11, "50대": 18, "60대": 23, "70대": 21, "80대 이상": 15}
-HOUSEHOLD = {"1": 70, "2": 17, "3": 8, "4": 3, "5+": 2}
+HOUSEHOLD = {"1": 70, "2": 17, "3": 9, "4": 4}
 # LE80 and GT80_LE100 are within the threshold, the GT100 bands need a recheck
-INCOME = {"LE80": 60, "GT80_LE100": 20, "GT100_LE120": 11, "GT120": 4}
+INCOME = {"LE80": 60, "GT80_LE100": 20, "GT100_LE120": 10, "GT120": 5}
 OBLIGOR = {"NONE": 55, "WITHIN": 41, "OVER": 2, "NO_DATA": 2}
 ABROAD = {"NONE": 90, "LE60": 6, "GT60": 4}
 COLUMNS = [
     "payment_token", "household_token", "region", "age_group", "gender", "pay_month", "benefit_type",
-    "household_size", "income_ratio_band", "obligor_asset_band", "death_month", "abroad_days_band",
+    "household_size", "income_ratio_band",
 ]
+EXTRA = ["obligor_asset_band", "death_month", "abroad_days_band"]
+EXTENDED = {"20261112-01"}
 
 
 def sha(text: str) -> str:
@@ -62,20 +64,21 @@ def pick(rng: random.Random, weights: dict) -> str:
 
 
 def death_month(rng: random.Random, age: str) -> str:
-    # deaths cluster in the oldest groups; most rows have none
-    chance = {"70대": 0.03, "80대 이상": 0.06}.get(age, 0.005)
+    # a few older recipients died before the payment month
+    chance = 0.03 if age in ("70대", "80대 이상") else 0.005
     if rng.random() >= chance:
         return ""
-    return rng.choices(["2025-10", "2025-11", "2025-12"], weights=[3, 4, 3])[0]
+    return rng.choice(["2025-09", "2025-10", "2025-11", "2025-12"])
 
 
 def make_table(rng: random.Random, run_id: str, out: Path) -> None:
     # tokens mimic the HMAC values the pipeline puts in place of the real ids
+    extended = run_id in EXTENDED
     rows = []
     for i in range(ROWS):
         age = pick(rng, AGE)
         reviewed = rng.random() >= 0.05
-        rows.append((
+        row = (
             "p_" + sha(f"{run_id}:p:{i}")[:16],
             "h_" + sha(f"{run_id}:h:{i}")[:16],
             pick(rng, REGIONS),
@@ -85,11 +88,11 @@ def make_table(rng: random.Random, run_id: str, out: Path) -> None:
             "생계급여(일반)",
             pick(rng, HOUSEHOLD) if reviewed else "unknown",
             pick(rng, INCOME) if reviewed else "NO_DATA",
-            pick(rng, OBLIGOR),
-            death_month(rng, age),
-            pick(rng, ABROAD),
-        ))
-    write_csv(out / f"{TABLE}.csv", COLUMNS, rows)
+        )
+        if extended:
+            row += (pick(rng, OBLIGOR), death_month(rng, age), pick(rng, ABROAD))
+        rows.append(row)
+    write_csv(out / f"{TABLE}.csv", COLUMNS + (EXTRA if extended else []), rows)
 
 
 def export_record(run_id: str, at: str, status: str) -> dict:
@@ -103,7 +106,7 @@ def review(run_id: str, at: str, rules: str, k: int = 7, direct_ok: bool = True)
     checks = [
         {"item": "direct_identifier", "passed": direct_ok, "value": 0 if direct_ok else 1,
          "reason": None if direct_ok else f"{TABLE}.phone 컬럼이 삭제되지 않음"},
-        {"item": "generalization", "passed": True, "value": "주소 시도, 연령 10세 구간, 가구원 5인 이상 통합", "reason": None},
+        {"item": "generalization", "passed": True, "value": "주소 시도, 연령 10세 구간", "reason": None},
         {"item": "k_anonymity", "passed": k >= 5, "value": k,
          "reason": None if k >= 5 else f"최소 k={k}, 기준 5 미만 (세종특별자치시 80대 이상 4인 가구)"},
     ]

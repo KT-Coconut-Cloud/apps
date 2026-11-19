@@ -11,61 +11,67 @@ from pathlib import Path
 import pandas as pd
 
 from app.analyses import now
-from app.catalog import CATALOG, TABLE, InvalidParams, Scenario, clean_params
+from app.catalog import CATALOG, TABLE, InvalidParams, Scenario, available, clean_params
 from app.storage import RUN_ID
 
 
 def _filter(df: pd.DataFrame, p: dict) -> pd.DataFrame:
     df = df[df["pay_month"] == p["pay_month"]]
-    for col in ("region", "age_group", "household_size"):
+    for col in ("region", "age_group", "household_size", "gender"):
         if p.get(col):
             df = df[df[col] == p[col]]
     return df
 
 
-def _count(df: pd.DataFrame, key: str, flags: dict) -> pd.DataFrame:
+def _count(df: pd.DataFrame, key: str, flags: dict, total: bool = True) -> pd.DataFrame:
+    cols = (["payments"] if total else []) + list(flags)
     out = df.assign(payments=1, **{name: rule(df).astype(int) for name, rule in flags.items()})
-    out = out.groupby(key)[["payments", *flags]].sum().astype(int)
+    out = out.groupby(key)[cols].sum().astype(int)
     return out.reset_index().sort_values(key)
 
 
-def livelihood_recheck(df: pd.DataFrame, p: dict) -> pd.DataFrame:
-    return _count(_filter(df, p), "region", {
-        "within": lambda d: d["income_ratio_band"].isin(["LE80", "GT80_LE100"]),
-        "recheck": lambda d: d["income_ratio_band"].isin(["GT100_LE120", "GT120"]),
-        "no_data": lambda d: d["income_ratio_band"] == "NO_DATA",
-    })
+WITHIN = ("LE80", "GT80_LE100")
+RECHECK = ("GT100_LE120", "GT120")
+CHECK = {
+    "within": lambda d: d["income_ratio_band"].isin(WITHIN),
+    "recheck": lambda d: d["income_ratio_band"].isin(RECHECK),
+    "no_data": lambda d: d["income_ratio_band"] == "NO_DATA",
+}
 
 
-def obligor_asset_check(df: pd.DataFrame, p: dict) -> pd.DataFrame:
-    return _count(_filter(df, p), "household_size", {
-        "no_obligor": lambda d: d["obligor_asset_band"] == "NONE",
-        "within": lambda d: d["obligor_asset_band"] == "WITHIN",
-        "over": lambda d: d["obligor_asset_band"] == "OVER",
-        "no_data": lambda d: d["obligor_asset_band"] == "NO_DATA",
-    })
+def recheck_excess(df: pd.DataFrame, p: dict) -> pd.DataFrame:
+    df = _filter(df, p)
+    df = df[df["income_ratio_band"].isin(RECHECK)]
+    return _count(df, "region", {
+        "recheck": lambda d: d["income_ratio_band"].isin(RECHECK),
+        "over_100_120": lambda d: d["income_ratio_band"] == "GT100_LE120",
+        "over_120": lambda d: d["income_ratio_band"] == "GT120",
+    }, total=False)
 
 
 def paid_after_death(df: pd.DataFrame, p: dict) -> pd.DataFrame:
-    df = df.assign(death_month=df["death_month"].fillna(""))
     return _count(_filter(df, p), "age_group", {
         "after_death": lambda d: (d["death_month"] != "") & (d["death_month"] < d["pay_month"]),
         "same_month": lambda d: d["death_month"] == d["pay_month"],
     })
 
 
-def long_stay_abroad(df: pd.DataFrame, p: dict) -> pd.DataFrame:
-    return _count(_filter(df, p), "region", {
+QUERIES = {
+    "livelihood_recheck": lambda df, p: _count(_filter(df, p), "region", CHECK),
+    "recheck_by_household": lambda df, p: _count(_filter(df, p), "household_size", CHECK),
+    "recheck_by_age": lambda df, p: _count(_filter(df, p), "age_group", CHECK),
+    "recheck_excess": recheck_excess,
+    "obligor_asset_check": lambda df, p: _count(_filter(df, p), "household_size", {
+        "no_obligor": lambda d: d["obligor_asset_band"] == "NONE",
+        "within": lambda d: d["obligor_asset_band"] == "WITHIN",
+        "over": lambda d: d["obligor_asset_band"] == "OVER",
+        "no_data": lambda d: d["obligor_asset_band"] == "NO_DATA",
+    }),
+    "paid_after_death": paid_after_death,
+    "long_stay_abroad": lambda df, p: _count(_filter(df, p), "region", {
         "abroad": lambda d: d["abroad_days_band"].isin(["LE60", "GT60"]),
         "over_60": lambda d: d["abroad_days_band"] == "GT60",
-    })
-
-
-QUERIES = {
-    "livelihood_recheck": livelihood_recheck,
-    "obligor_asset_check": obligor_asset_check,
-    "paid_after_death": paid_after_death,
-    "long_stay_abroad": long_stay_abroad,
+    }),
 }
 
 
@@ -111,6 +117,16 @@ class LocalLambda:
         used = [int(p.name[-4:]) for p in base.glob(f"req-{day}-*")] if base.exists() else []
         return f"req-{day}-{max(used, default=0) + 1:04d}"
 
+    def _data_path(self, run_id: str) -> Path:
+        return self.root / "data" / TABLE / f"run_id={run_id}" / f"{TABLE}.csv"
+
+    def _columns(self, run_id: str) -> set[str] | None:
+        path = self._data_path(run_id)
+        if not path.is_file():
+            return None
+        with path.open(encoding="utf-8") as f:
+            return set(f.readline().strip().split(","))
+
     def submit(self, payload: dict) -> dict:
         scenario = CATALOG.get(payload.get("scenario"))
         if scenario is None:
@@ -122,6 +138,8 @@ class LocalLambda:
         run_id = payload.get("run_id") or ""
         if not RUN_ID.match(run_id) or not self._ready(run_id):
             return {"error": "run_not_ready", "detail": run_id}
+        if scenario.key not in available(self._columns(run_id)):
+            return {"error": "template_unavailable", "detail": scenario.key}
         purpose = (payload.get("purpose") or "").strip()
         if not payload.get("requested_by") or not purpose or len(purpose) > 200:
             return {"error": "invalid_params", "detail": "requested_by, purpose"}
@@ -153,8 +171,7 @@ class LocalLambda:
         out = self._request_dir(request["request_id"])
         result = {"status": "succeeded", "rows": 0, "suppressed_cells": 0, "error": None}
         try:
-            path = self.root / "data" / TABLE / f"run_id={request['run_id']}" / f"{TABLE}.csv"
-            data = pd.read_csv(path, dtype=str, keep_default_na=False)
+            data = pd.read_csv(self._data_path(request["run_id"]), dtype=str, keep_default_na=False)
             df = QUERIES[scenario.key](data, request["params"])
             df, hidden = suppress(df, scenario, self.min_cell)
             df[list(scenario.columns)].to_csv(out / "result.csv", index=False)
