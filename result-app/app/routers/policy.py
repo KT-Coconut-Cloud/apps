@@ -3,7 +3,7 @@ from fastapi.responses import RedirectResponse, Response
 
 from app.analyses import list_analyses, load_analysis
 from app.auth import User, require_role
-from app.catalog import CATALOG, TABLE, InvalidParams, available, clean_params
+from app.catalog import CATALOG, InvalidParams, available, clean_params
 from app.config import Settings, get_settings
 from app.results import VIEWS
 from app.storage import InvalidId, Store, check_request_id
@@ -36,8 +36,8 @@ def ready_runs(store: Store) -> list[dict]:
 def run_templates(request: Request, run_id: str | None) -> dict:
     if not run_id:
         return available(None)
-    header = request.app.state.data.read_header(f"{TABLE}/run_id={run_id}/{TABLE}.csv")
-    return available(set(header) if header else None)
+    columns = request.app.state.analysis.columns(run_id)
+    return available(set(columns) if columns else None)
 
 
 def own_analysis(store: Store, request_id: str, user: User):

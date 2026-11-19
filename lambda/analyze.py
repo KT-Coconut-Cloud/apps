@@ -48,6 +48,10 @@ def claim_request_id(bucket: str, request: dict) -> str:
 
 def handler(event, context):
     bucket = env("CLEAN_BUCKET")
+    if event.get("action") == "columns":
+        # the result app has no access to data/, so it asks here which columns a run exported
+        run_id = event.get("run_id") or ""
+        return {"columns": export_header(bucket, run_id) if RUN_ID.match(run_id) else None}
     scenario = CATALOG.get(event.get("scenario"))
     if scenario is None:
         return {"error": "unknown_scenario", "detail": str(event.get("scenario"))}

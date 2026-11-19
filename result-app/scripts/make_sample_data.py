@@ -2,7 +2,7 @@
 
 data/ stands in for the pseudonymized livelihood_payment table Athena queries, in
 the layout the classifier writes to the clean bucket. Only the local fake Lambda
-reads the rows; the app only reads the header to see which templates a run supports.
+reads them; the app never does.
 
 Rows follow the export columns of the pipeline. Runs listed in EXTENDED also get the
 columns the added templates need, appended after the base ones.

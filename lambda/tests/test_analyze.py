@@ -152,3 +152,12 @@ def test_template_needs_its_columns(ready):
     assert out["error"] == "template_unavailable" and not fake.started
     assert mods["analyze"].handler(REQUEST, Context())["status"] == "running"
 
+def test_columns_lookup_reads_only_the_header(ready):
+    s3, mods = ready
+    use(mods, fake := FakeAthena())
+    s3.put_object(Bucket=CLEAN, Key=f"data/livelihood_payment/run_id={RUN}/livelihood_payment.csv",
+                  Body=b"region,death_month\nx,y\n")
+    assert mods["analyze"].handler({"action": "columns", "run_id": RUN}, Context()) == {"columns": ["region", "death_month"]}
+    assert mods["analyze"].handler({"action": "columns", "run_id": "../x"}, Context()) == {"columns": None}
+    assert not fake.started and not [k for k in keys(s3, CLEAN) if k.startswith("results/requests/")]
+
