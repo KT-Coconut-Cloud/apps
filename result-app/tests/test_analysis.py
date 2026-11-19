@@ -214,3 +214,12 @@ def test_fake_lambda_checks_columns_too(policy):
                       "purpose": "점검", "requested_by": "policy01"})
     assert out["error"] == "template_unavailable"
 
+def test_lambda_backend_falls_back_when_lookup_fails():
+    from app.analyses import LambdaBackend
+
+    class Broken:
+        def invoke(self, **kwargs):
+            raise RuntimeError("no network")
+
+    assert LambdaBackend(Broken(), "analysis-request").columns("20261112-01") is None
+

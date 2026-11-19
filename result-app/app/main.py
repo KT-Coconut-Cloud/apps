@@ -29,11 +29,9 @@ def build_backends(settings: Settings) -> tuple:
     if settings.data_source == "s3":
         results = S3Store(_s3(settings, settings.results_profile), settings.s3_bucket, "results")
         reports = S3Store(_s3(settings, settings.reports_profile), settings.s3_bucket, "reports")
-        data = S3Store(_s3(settings, settings.results_profile), settings.s3_bucket, "data")
     else:
         results = LocalStore(settings.data_dir, "results")
         reports = LocalStore(settings.data_dir, "reports")
-        data = LocalStore(settings.data_dir, "data")
 
     if settings.analysis_backend == "lambda":
         from botocore.config import Config
@@ -48,7 +46,7 @@ def build_backends(settings: Settings) -> tuple:
         analysis = LambdaBackend(client, settings.analysis_function)
     else:
         analysis = LocalLambda(settings.data_dir, settings.local_analysis_delay, settings.min_cell_size)
-    return results, reports, data, analysis
+    return results, reports, analysis
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -56,7 +54,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Result Viewer", docs_url=None, redoc_url=None, openapi_url=None)
 
     app.dependency_overrides[get_settings] = lambda: settings
-    app.state.results, app.state.reports, app.state.data, app.state.analysis = build_backends(settings)
+    app.state.results, app.state.reports, app.state.analysis = build_backends(settings)
     app.state.login_guard = LoginGuard(settings.max_login_failures, settings.lockout_minutes * 60)
 
     app.add_middleware(

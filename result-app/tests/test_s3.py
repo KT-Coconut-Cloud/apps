@@ -25,7 +25,11 @@ class FakeLambda:
     def invoke(self, FunctionName, Payload):
         payload = json.loads(Payload)
         self.calls.append((FunctionName, payload))
-        return {"StatusCode": 200, "Payload": io.BytesIO(json.dumps(self.lam.submit(payload)).encode())}
+        if payload.get("action") == "columns":
+            body = {"columns": self.lam.columns(payload["run_id"])}
+        else:
+            body = self.lam.submit(payload)
+        return {"StatusCode": 200, "Payload": io.BytesIO(json.dumps(body).encode())}
 
 
 def upload(data_dir):
@@ -79,7 +83,8 @@ def test_request_goes_through_lambda_and_result_is_read_from_bucket(s3_client, d
     assert "20261112-01" in client.get("/policy/datasets").text
 
     url = client.post("/policy/analyses", data=MAIN, follow_redirects=False).headers["location"]
-    name, payload = fake.calls[0]
+    assert fake.calls[0][1] == {"action": "columns", "run_id": "20261112-01"}
+    name, payload = fake.calls[-1]
     assert name == "analysis-request"
     assert payload["requested_by"] == "policy01" and payload["params"]["age_group"] is None
 
