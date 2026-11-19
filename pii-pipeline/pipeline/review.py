@@ -30,10 +30,12 @@ def check_direct_identifier(rules: Rules, data: dict) -> dict:
         for name in header:
             if name not in allowed:
                 hit(1, f"{table.name}.{name} 컬럼이 삭제되지 않음")
-        if table.token_column in header:
-            bad = sum(1 for r in rows if not TOKEN.match(r[table.token_column] or ""))
+        for col in table.token_columns:
+            if col not in header:
+                continue
+            bad = sum(1 for r in rows if not TOKEN.match(r[col] or ""))
             if bad:
-                hit(bad, f"{table.name}.{table.token_column}에 토큰화되지 않은 값 {bad}건")
+                hit(bad, f"{table.name}.{col}에 토큰화되지 않은 값 {bad}건")
         for name in header:
             for label, pattern in IDENTIFIERS.items():
                 found = sum(1 for r in rows if pattern.search(r[name] or ""))

@@ -20,8 +20,10 @@ class LocalTokenizer:
     def __init__(self, key: bytes):
         self.key = key
 
-    def tokens(self, values: list[str]) -> list[str]:
-        return [_token(hmac.new(self.key, v.encode(), hashlib.sha256).digest()) for v in values]
+    def tokens(self, values: list[str], key_name: str) -> list[str]:
+        # one sub-key per transit key name, same as having separate keys in Vault
+        sub = hmac.new(self.key, key_name.encode(), hashlib.sha256).digest()
+        return [_token(hmac.new(sub, v.encode(), hashlib.sha256).digest()) for v in values]
 
 
 class VaultTokenizer:
@@ -30,9 +32,8 @@ class VaultTokenizer:
     BATCH = 500
     SA_TOKEN = Path("/var/run/secrets/kubernetes.io/serviceaccount/token")
 
-    def __init__(self, addr: str, key_name: str, token: str | None = None, role: str | None = None, mount: str = "transit"):
+    def __init__(self, addr: str, token: str | None = None, role: str | None = None, mount: str = "transit"):
         self.addr = addr.rstrip("/")
-        self.key_name = key_name
         self.mount = mount
         self.token = token or self._login(role)
 
@@ -52,11 +53,11 @@ class VaultTokenizer:
         jwt = self.SA_TOKEN.read_text().strip()
         return self._call("auth/kubernetes/login", {"role": role, "jwt": jwt})["auth"]["client_token"]
 
-    def tokens(self, values: list[str]) -> list[str]:
+    def tokens(self, values: list[str], key_name: str) -> list[str]:
         out = []
         for i in range(0, len(values), self.BATCH):
             batch = [{"input": base64.b64encode(v.encode()).decode()} for v in values[i:i + self.BATCH]]
-            data = self._call(f"{self.mount}/hmac/{self.key_name}/sha2-256", {"batch_input": batch}, self.token)
+            data = self._call(f"{self.mount}/hmac/{key_name}/sha2-256", {"batch_input": batch}, self.token)
             for item in data["data"]["batch_results"]:
                 # "vault:v1:<base64>"
                 out.append(_token(base64.b64decode(item["hmac"].split(":", 2)[2])))
@@ -67,7 +68,6 @@ def from_env():
     if os.environ.get("VAULT_ADDR"):
         return VaultTokenizer(
             os.environ["VAULT_ADDR"],
-            os.environ.get("VAULT_TRANSIT_KEY", "citizen-id"),
             token=os.environ.get("VAULT_TOKEN"),
             role=os.environ.get("VAULT_ROLE"),
             mount=os.environ.get("VAULT_TRANSIT_MOUNT", "transit"),

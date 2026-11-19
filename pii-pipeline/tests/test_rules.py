@@ -28,6 +28,8 @@ def test_fixture_rules_load(rules):
     lambda d: d["tables"]["citizen"].update(quasi_identifiers=["address"]),
     lambda d: d["tables"]["crisis_signal"]["columns"]["signal_type"].update({"as": "citizen_id"}),
     lambda d: d["k_anonymity"].update(threshold=1),
+    lambda d: d["tables"]["citizen"]["columns"]["citizen_id"].pop("key"),
+    lambda d: d["tables"]["citizen"]["columns"]["household_type"].update(key="citizen-id"),
 ])
 def test_bad_rules_are_rejected(tmp_path, change):
     with pytest.raises(InvalidRules):
