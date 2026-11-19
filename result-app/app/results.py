@@ -10,7 +10,7 @@ import pandas as pd
 from app.catalog import CATALOG, Scenario
 
 # grouping values that need a readable name on screen
-VALUE_LABELS = {"unknown": "자료 없음", "5+": "5인 이상"}
+VALUE_LABELS = {"unknown": "자료 없음"}
 
 
 def _records(df: pd.DataFrame) -> list[dict]:

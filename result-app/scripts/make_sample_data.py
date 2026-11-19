@@ -4,8 +4,7 @@ data/ stands in for the pseudonymized livelihood_payment table Athena queries, i
 the layout the classifier writes to the clean bucket. Only the local fake Lambda
 reads it; the app itself never does.
 
-Rows follow the export columns of the pipeline. The last three columns are
-the extra ones the added templates need.
+Rows follow the export columns of the pipeline.
 """
 
 import csv
@@ -29,14 +28,12 @@ REGIONS = {
     "전북특별자치도": 68_305,
 }
 AGE = {"20대": 5, "30대": 7, "40대": 11, "50대": 18, "60대": 23, "70대": 21, "80대 이상": 15}
-HOUSEHOLD = {"1": 70, "2": 17, "3": 8, "4": 3, "5+": 2}
+HOUSEHOLD = {"1": 70, "2": 17, "3": 9, "4": 4}
 # LE80 and GT80_LE100 are within the threshold, the GT100 bands need a recheck
-INCOME = {"LE80": 60, "GT80_LE100": 20, "GT100_LE120": 11, "GT120": 4}
-OBLIGOR = {"NONE": 55, "WITHIN": 41, "OVER": 2, "NO_DATA": 2}
-ABROAD = {"NONE": 90, "LE60": 6, "GT60": 4}
+INCOME = {"LE80": 60, "GT80_LE100": 20, "GT100_LE120": 10, "GT120": 5}
 COLUMNS = [
     "payment_token", "household_token", "region", "age_group", "gender", "pay_month", "benefit_type",
-    "household_size", "income_ratio_band", "obligor_asset_band", "death_month", "abroad_days_band",
+    "household_size", "income_ratio_band",
 ]
 
 
@@ -61,14 +58,6 @@ def pick(rng: random.Random, weights: dict) -> str:
     return rng.choices(list(weights), weights=weights.values())[0]
 
 
-def death_month(rng: random.Random, age: str) -> str:
-    # deaths cluster in the oldest groups; most rows have none
-    chance = {"70대": 0.03, "80대 이상": 0.06}.get(age, 0.005)
-    if rng.random() >= chance:
-        return ""
-    return rng.choices(["2025-10", "2025-11", "2025-12"], weights=[3, 4, 3])[0]
-
-
 def make_table(rng: random.Random, run_id: str, out: Path) -> None:
     # tokens mimic the HMAC values the pipeline puts in place of the real ids
     rows = []
@@ -85,9 +74,6 @@ def make_table(rng: random.Random, run_id: str, out: Path) -> None:
             "생계급여(일반)",
             pick(rng, HOUSEHOLD) if reviewed else "unknown",
             pick(rng, INCOME) if reviewed else "NO_DATA",
-            pick(rng, OBLIGOR),
-            death_month(rng, age),
-            pick(rng, ABROAD),
         ))
     write_csv(out / f"{TABLE}.csv", COLUMNS, rows)
 
@@ -103,7 +89,7 @@ def review(run_id: str, at: str, rules: str, k: int = 7, direct_ok: bool = True)
     checks = [
         {"item": "direct_identifier", "passed": direct_ok, "value": 0 if direct_ok else 1,
          "reason": None if direct_ok else f"{TABLE}.phone 컬럼이 삭제되지 않음"},
-        {"item": "generalization", "passed": True, "value": "주소 시도, 연령 10세 구간, 가구원 5인 이상 통합", "reason": None},
+        {"item": "generalization", "passed": True, "value": "주소 시도, 연령 10세 구간", "reason": None},
         {"item": "k_anonymity", "passed": k >= 5, "value": k,
          "reason": None if k >= 5 else f"최소 k={k}, 기준 5 미만 (세종특별자치시 80대 이상 4인 가구)"},
     ]

@@ -33,9 +33,9 @@ def test_request_runs_and_shows_result(policy):
 
 @pytest.mark.parametrize("scenario, heading", [
     ("livelihood_recheck", "시도별 재확인 필요 비율"),
-    ("obligor_asset_check", "가구원 수별 12억 원 초과 비율"),
-    ("paid_after_death", "연령대별 사망 이후 지급 비율"),
-    ("long_stay_abroad", "시도별 60일 초과 비율"),
+    ("recheck_by_household", "가구원 수별 재확인 필요 비율"),
+    ("recheck_by_age", "연령대별 재확인 필요 비율"),
+    ("recheck_excess", "시도별 120% 초과 비율"),
 ])
 def test_every_template_runs(policy, data_dir, scenario, heading):
     request_id = request_id_of(submit(policy, **{**MAIN, "scenario": scenario}))
@@ -45,8 +45,8 @@ def test_every_template_runs(policy, data_dir, scenario, heading):
 
 
 def test_grouping_values_get_readable_names(policy):
-    text = policy.get(f"/policy/analyses/{request_id_of(submit(policy, **{**MAIN, 'scenario': 'obligor_asset_check'}))}").text
-    assert "1인" in text and "5인 이상" in text and "자료 없음" in text
+    text = policy.get(f"/policy/analyses/{request_id_of(submit(policy, **{**MAIN, 'scenario': 'recheck_by_household'}))}").text
+    assert "1인" in text and "4인" in text and "자료 없음" in text
 
 
 def test_result_files_follow_contract(policy, data_dir):
@@ -73,7 +73,7 @@ def test_flag_counts_add_up(policy, data_dir):
 
 
 def test_small_cells_are_blank(policy, data_dir):
-    scenario = CATALOG["long_stay_abroad"]
+    scenario = CATALOG["livelihood_recheck"]
     request_id = request_id_of(submit(policy, **{**MAIN, "scenario": scenario.key}))
     base = data_dir / "results" / "requests" / request_id
     manifest = json.loads((base / "manifest.json").read_text(encoding="utf-8"))
@@ -109,7 +109,7 @@ def test_download_csv(policy):
 @pytest.mark.parametrize("form, message", [
     ({**MAIN, "pay_month": "2025-13"}, "YYYY-MM"),
     ({**MAIN, "pay_month": ""}, "지급월을(를) 입력하세요"),
-    ({**MAIN, "household_size": "6"}, "목록에 없습니다"),
+    ({**MAIN, "household_size": "5+"}, "목록에 없습니다"),
     ({**MAIN, "scenario": "free_sql"}, "지원하지 않는"),
     ({**MAIN, "run_id": "20261111-01"}, "분석에 쓸 수 없습니다"),
     ({**MAIN, "run_id": "20261113-01"}, "분석에 쓸 수 없습니다"),
@@ -165,11 +165,11 @@ def test_running_request_polls_until_done(policy, client, data_dir):
 
 
 def test_security_sees_request_log_without_results(policy, client):
-    submit(policy, **{**MAIN, "scenario": "long_stay_abroad"})
+    submit(policy, **{**MAIN, "scenario": "recheck_by_age"})
     client.post("/logout")
     login(client, "security01", "pw-security")
     text = client.get("/security/analyses").text
-    assert "policy01" in text and "해외 장기 체류 중 생계급여 지급" in text and "지급월 2025-12" in text
+    assert "policy01" in text and "연령대별 재확인 필요 지급 건" in text and "지급월 2025-12" in text
     assert "생계급여 지급 건 점검" in text
     assert "비공개 값" in text
 
