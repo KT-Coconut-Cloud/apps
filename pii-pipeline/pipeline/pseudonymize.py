@@ -106,7 +106,7 @@ def transform_table(table: Table, rows: list[dict], tokenizer, today: date | Non
         if col.action == "tokenize":
             values = [r[col.source] for r in rows]
             unique = sorted(set(values))
-            lookup = dict(zip(unique, tokenizer.tokens(unique)))
+            lookup = dict(zip(unique, tokenizer.tokens(unique, col.key)))
             for o, v in zip(out, values):
                 o[col.name] = lookup[v]
             continue

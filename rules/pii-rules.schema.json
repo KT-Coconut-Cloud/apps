@@ -39,11 +39,13 @@
       "properties": {
         "action": {"enum": ["drop", "keep", "tokenize", "generalize", "map"]},
         "as": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "key": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
         "method": {"enum": ["sigungu", "month", "year", "age_band"]},
         "values": {"type": "object", "additionalProperties": {"type": ["string", "integer"]}},
         "default": {"type": ["string", "integer"]}
       },
       "allOf": [
+        {"if": {"properties": {"action": {"const": "tokenize"}}}, "then": {"required": ["key"]}, "else": {"not": {"required": ["key"]}}},
         {"if": {"properties": {"action": {"const": "generalize"}}}, "then": {"required": ["method"]}},
         {"if": {"properties": {"action": {"const": "map"}}}, "then": {"required": ["values"]}},
         {"if": {"properties": {"action": {"const": "drop"}}}, "then": {"not": {"required": ["as"]}}}
