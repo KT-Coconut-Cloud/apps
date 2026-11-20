@@ -24,6 +24,31 @@ pipeline {
       }
     }
 
+    stage('Secret scan') {
+      steps {
+        // 저장소 전체 커밋 이력에서 키, 토큰 검사
+        sh '''
+          docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD":/repo \
+            zricethezav/gitleaks:v8.28.0 git /repo --redact --no-banner --exit-code 1
+        '''
+      }
+    }
+
+    stage('SAST') {
+      steps {
+        // ERROR 등급 탐지 시 빌드 실패. 탐지 내용은 테스트 리포트로 확인
+        sh '''
+          docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD":/src -w /src \
+            semgrep/semgrep:latest semgrep scan --metrics=off --disable-version-check \
+            --config p/python --config p/dockerfile \
+            --junit-xml-output=semgrep.xml --error --severity ERROR pii-pipeline rules
+        '''
+      }
+      post {
+        always { junit allowEmptyResults: true, testResults: 'semgrep.xml' }
+      }
+    }
+
     stage('Test') {
       steps {
         sh '''
@@ -132,5 +157,21 @@ pipeline {
       sh 'docker image rm $IMAGE:$SHA || true'
       sh 'rm -rf gitops'
     }
+    success {
+      script {
+        if (env.BRANCH_NAME == 'main') { notifyDiscord('SUCCESS') }
+      }
+    }
+    failure {
+      script { notifyDiscord('FAILURE') }
+    }
+  }
+}
+
+def notifyDiscord(String status) {
+  def msg = "${status} ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.SHA ?: '-'})\n${env.BUILD_URL}"
+  writeFile file: 'discord.json', text: groovy.json.JsonOutput.toJson([content: msg])
+  withCredentials([string(credentialsId: 'discord-webhook', variable: 'DISCORD_WEBHOOK')]) {
+    sh 'curl -sS -m 10 -H "Content-Type: application/json" -d @discord.json "$DISCORD_WEBHOOK" || true; rm -f discord.json'
   }
 }
