@@ -1,0 +1,201 @@
+# 생계급여 시나리오의 JOIN 입력 14개 → 반출 CSV 9개 컬럼 정책.
+
+# 좀 더 자세히 컬럼별 규칙과 db, 데이터셋, pii-rules에 대해 알고 싶으면 아래 링크 참고
+# https://app.notion.com/p/DB-41d95c131ec58056be5bfea3890f3dff
+
+# action/method 이름은 프로젝트 Python에서 구현할 규칙이다.
+# Vault의 실제 키 값과 인증 토큰은 이 파일에 적지 않는다. -> 중요!! 안 그러면 Vault를 사용하는 이유가 사라짐. Git에도 절대 올리지 않기.
+version: "3.1"
+scenario: benefit_review
+vault_profile: rules/vault-client.example.yaml
+
+table:
+  benefit_review_joined:
+    source_sql: rules/mysql/benefit_review.sql
+    row_key: payment_id
+    unknown_input_column: error
+    missing_input_column: error
+    # processing_order는 입력 검증, 파생 컬럼 계산, 컬럼 변환, 출력 컬럼 선택, 출력 검증 순서로 진행한다.
+    # 즉, 파이썬이 규칙을 적용할 순서!
+    processing_order: [ validate_input, derive, transform_columns, select_output, validate_output ]
+
+    columns:
+      payment_id:
+        action: hmac
+        output: payment_token
+        provider: vault_transit
+        key_name: payment-id-key # Vault가 사용할 key 이름. 실제 키 값은 Vault에만 존재.
+        key_version: 1
+        algorithm: sha2-256
+        input_format: canonical_positive_integer_utf8
+        input_prefix: "payment:v1:"
+        output_format: vault_native
+        nullable: false
+
+      household_id:
+        action: hmac
+        output: household_token
+        provider: vault_transit
+        key_name: household-id-key # Valut가 사용할 key 이름. 실제 키 값은 Vault에만 존재.
+        key_version: 1
+        algorithm: sha2-256
+        input_format: canonical_positive_integer_utf8
+        input_prefix: "household:v1:"
+        output_format: vault_native
+        nullable: false
+
+      citizen_id:
+        action: drop
+      name:
+        action: drop
+
+      age:
+        action: generalize
+        method: age_band
+        interval: 10
+        input_min: 0
+        input_max: 120
+        output: age_group
+        output_template: "{lower}대"
+        nullable: false
+
+      gender:
+        action: keep
+        allowed_values: [ 남, 여 ]
+        nullable: false
+
+      phone:
+        action: drop
+
+      address:
+        action: generalize
+        method: leading_sido_name
+        output: region
+        match: exact_leading_name_followed_by_whitespace_or_end
+        nullable: false
+        on_unknown: error
+        allowed_values:
+        - 서울특별시
+        - 부산광역시
+        - 대구광역시
+        - 인천광역시
+        - 광주광역시
+        - 대전광역시
+        - 울산광역시
+        - 세종특별자치시
+        - 경기도
+        - 충청북도
+        - 충청남도
+        - 전라남도
+        - 경상북도
+        - 경상남도
+        - 제주특별자치도
+        - 강원특별자치도
+        - 전북특별자치도
+
+      pay_month:
+        action: keep
+        pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$'
+        nullable: false
+
+      benefit_type:
+        action: keep
+        allowed_values: [ 생계급여(일반) ]
+        nullable: false
+
+      amount:
+        action: drop
+
+      household_size:
+        action: generalize
+        method: top_code
+        input_min: 1
+        top_code_from: 5
+        top_code_value: "5+"
+        output_type: string
+        null_value: unknown
+        allowed_output_values: [ "1", "2", "3", "4", "5+", unknown ]
+
+      # 비율 구간을 먼저 계산하고 나서 원금액 컬럼을 제거한다.
+      recognized_income:
+        action: drop
+        input_min: 0
+        nullable: true
+      income_limit:
+        action: drop
+        input_min: 1
+        nullable: true
+
+    derived:
+      income_ratio_band:
+        action: ratio_band
+        numerator: recognized_income
+        denominator: income_limit
+        comparison: integer_cross_multiply
+        # 한 금액이라도 NULL이면 NO_DATA, 음수·0 기준액은 error.
+        on_missing: NO_DATA
+        on_invalid: error
+        bands:
+        - { upper_percent_inclusive: 80, output: LE80 }
+        - { upper_percent_inclusive: 100, output: GT80_LE100 }
+        - { upper_percent_inclusive: 120, output: GT100_LE120 }
+        - { otherwise: true, output: GT120 }
+
+    output:
+      format: csv
+      # 파일 기본 이름 초안. 실행별 저장 폴더는 Workflow에서 지정한다.
+      filename: benefit_review_export.csv
+      delimiter: ','
+      header: true
+      quotechar: '"'
+      quoting: minimal
+      doublequote: true
+      lineterminator: "\r\n"
+      # 현재 생성 CSV와 같은 UTF-8 BOM. Athena 담당자와 최종 합의한다.
+      encoding: utf-8-sig
+      columns:
+      - payment_token
+      - household_token
+      - region
+      - age_group
+      - gender
+      - pay_month
+      - benefit_type
+      - household_size
+      - income_ratio_band
+
+    validation:
+      exact_output_columns: true
+      preserve_row_count: true
+      unique_columns: [ payment_token ]
+      consistent_token_source: household_id
+      token_pattern: '^vault:v1:[A-Za-z0-9+/]{43}=$'
+      token_match: fullmatch
+      age_group_pattern: '^(?:0|[1-9]0|1[01]0|120)대$'
+      no_empty_output_values: true
+      check_transformation_against_input: true
+      on_vault_failure: error
+      forbidden_columns:
+      - payment_id
+      - household_id
+      - citizen_id
+      - name
+      - phone
+      - address
+      - age
+      - amount
+      - recognized_income
+      - income_limit
+      - review_status
+      - review_reason
+      - is_synthetic
+      income_band_values: [ LE80, GT80_LE100, GT100_LE120, GT120, NO_DATA ]
+      # 원본에 포함된 휴대전화번호의 잔존 탐지 초안.
+      # 모든 출력 셀에서 search 방식으로 검사. Macie 대조 테스트는 후속 작업.
+      pii_scan_columns: all
+      pii_match: search
+      pii_patterns:
+        phone: '\b01[016789][- ]?[0-9]{3,4}[- ]?[0-9]{4}\b'
+      on_failure: block_export
+      on_error: block_export
+      report_row_values: false
