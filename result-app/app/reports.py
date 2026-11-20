@@ -18,7 +18,8 @@ class ExportRecord(BaseModel):
 
 
 class AdequacyCheck(BaseModel):
-    item: Literal["direct_identifier", "generalization", "k_anonymity"]
+    # k_anonymity is only in runs reviewed before rules v3.1
+    item: Literal["direct_identifier", "tokenization", "generalization", "completeness", "k_anonymity"]
     passed: bool
     value: float | int | str | None = None
     reason: str | None = None
@@ -29,6 +30,7 @@ class AdequacyReview(BaseModel):
     reviewed_at: datetime
     passed: bool
     rules_version: str | None = None
+    rows: int | None = None
     checks: list[AdequacyCheck]
 
 
@@ -54,7 +56,9 @@ class MacieResult(BaseModel):
 
 CHECK_LABELS = {
     "direct_identifier": "직접식별자 잔존",
+    "tokenization": "토큰 형식",
     "generalization": "준식별자 일반화",
+    "completeness": "빈 값",
     "k_anonymity": "k-익명성",
 }
 

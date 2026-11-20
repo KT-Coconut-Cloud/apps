@@ -2,54 +2,191 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "pii-rules",
   "type": "object",
-  "required": ["version", "k_anonymity", "tables"],
+  "required": ["version", "scenario", "table"],
   "additionalProperties": false,
   "properties": {
-    "version": {"type": "string", "pattern": "^rules-v[0-9]+\\.[0-9]+$"},
-    "k_anonymity": {
-      "type": "object",
-      "required": ["threshold"],
-      "additionalProperties": false,
-      "properties": {"threshold": {"type": "integer", "minimum": 2}}
-    },
-    "tables": {
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"},
+    "scenario": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+    "vault_profile": {"type": "string"},
+    "table": {
       "type": "object",
       "minProperties": 1,
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
       "additionalProperties": {"$ref": "#/$defs/table"}
     }
   },
   "$defs": {
+    "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+    "values": {"type": "array", "minItems": 1, "items": {"type": "string"}, "uniqueItems": true},
     "table": {
       "type": "object",
-      "required": ["columns"],
+      "required": ["row_key", "processing_order", "columns", "output"],
       "additionalProperties": false,
       "properties": {
+        "source_sql": {"type": "string"},
+        "row_key": {"$ref": "#/$defs/name"},
+        "unknown_input_column": {"enum": ["error", "drop"]},
+        "missing_input_column": {"enum": ["error"]},
+        "processing_order": {
+          "const": ["validate_input", "derive", "transform_columns", "select_output", "validate_output"]
+        },
         "columns": {
           "type": "object",
           "minProperties": 1,
+          "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
           "additionalProperties": {"$ref": "#/$defs/column"}
         },
-        "quasi_identifiers": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+        "derived": {
+          "type": "object",
+          "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+          "additionalProperties": {"$ref": "#/$defs/ratio_band"}
+        },
+        "output": {"$ref": "#/$defs/output"},
+        "validation": {"$ref": "#/$defs/validation"}
       }
     },
     "column": {
       "type": "object",
       "required": ["action"],
-      "additionalProperties": false,
       "properties": {
-        "action": {"enum": ["drop", "keep", "tokenize", "generalize", "map"]},
-        "as": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
-        "key": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
-        "method": {"enum": ["sigungu", "month", "year", "age_band"]},
-        "values": {"type": "object", "additionalProperties": {"type": ["string", "integer"]}},
-        "default": {"type": ["string", "integer"]}
+        "action": {"enum": ["drop", "keep", "tokenize", "generalize"]},
+        "as": {"$ref": "#/$defs/name"},
+        "nullable": {"type": "boolean"},
+        "allowed_values": {"$ref": "#/$defs/values"},
+        "pattern": {"type": "string"},
+        "input_min": {"type": "number"},
+        "input_max": {"type": "number"}
       },
       "allOf": [
-        {"if": {"properties": {"action": {"const": "tokenize"}}}, "then": {"required": ["key"]}, "else": {"not": {"required": ["key"]}}},
-        {"if": {"properties": {"action": {"const": "generalize"}}}, "then": {"required": ["method"]}},
-        {"if": {"properties": {"action": {"const": "map"}}}, "then": {"required": ["values"]}},
-        {"if": {"properties": {"action": {"const": "drop"}}}, "then": {"not": {"required": ["as"]}}}
+        {"if": {"properties": {"action": {"const": "drop"}}},
+         "then": {"properties": {"action": true, "nullable": true, "input_min": true, "input_max": true},
+                  "additionalProperties": false}},
+        {"if": {"properties": {"action": {"const": "keep"}}},
+         "then": {"properties": {"action": true, "as": true, "nullable": true, "allowed_values": true, "pattern": true},
+                  "additionalProperties": false}},
+        {"if": {"properties": {"action": {"const": "tokenize"}}}, "then": {"$ref": "#/$defs/tokenize"}},
+        {"if": {"properties": {"action": {"const": "generalize"}}}, "then": {"$ref": "#/$defs/generalize"}}
       ]
+    },
+    "tokenize": {
+      "required": ["as", "provider", "key", "key_version", "algorithm", "input_format", "output_format"],
+      "additionalProperties": false,
+      "properties": {
+        "action": true,
+        "as": true,
+        "nullable": {"const": false},
+        "provider": {"enum": ["vault_transit"]},
+        "key": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+        "key_version": {"type": "integer", "minimum": 1},
+        "algorithm": {"enum": ["sha2-256"]},
+        "input_format": {"enum": ["canonical_positive_integer_utf8"]},
+        "input_prefix": {"type": "string"},
+        "output_format": {"enum": ["vault_native"]}
+      }
+    },
+    "generalize": {
+      "required": ["method"],
+      "properties": {"method": {"enum": ["age_band", "leading_sido_name", "top_code"]}},
+      "allOf": [
+        {"if": {"properties": {"method": {"const": "age_band"}}}, "then": {
+          "required": ["interval", "input_min", "input_max", "output_template"],
+          "additionalProperties": false,
+          "properties": {
+            "action": true, "method": true, "as": true, "nullable": true, "input_min": true, "input_max": true,
+            "interval": {"type": "integer", "minimum": 1},
+            "output_template": {"type": "string"}
+          }
+        }},
+        {"if": {"properties": {"method": {"const": "leading_sido_name"}}}, "then": {
+          "required": ["allowed_values"],
+          "additionalProperties": false,
+          "properties": {
+            "action": true, "method": true, "as": true, "nullable": true, "allowed_values": true,
+            "match": {"enum": ["exact_leading_name_followed_by_whitespace_or_end"]},
+            "on_unknown": {"enum": ["error"]}
+          }
+        }},
+        {"if": {"properties": {"method": {"const": "top_code"}}}, "then": {
+          "required": ["top_code_from", "top_code_value"],
+          "additionalProperties": false,
+          "properties": {
+            "action": true, "method": true, "as": true, "nullable": true, "input_min": true,
+            "top_code_from": {"type": "integer"},
+            "top_code_value": {"type": "string"},
+            "output_type": {"enum": ["string"]},
+            "null_value": {"type": "string"},
+            "allowed_output_values": {"$ref": "#/$defs/values"}
+          }
+        }}
+      ]
+    },
+    "ratio_band": {
+      "type": "object",
+      "required": ["action", "numerator", "denominator", "bands"],
+      "additionalProperties": false,
+      "properties": {
+        "action": {"const": "ratio_band"},
+        "numerator": {"$ref": "#/$defs/name"},
+        "denominator": {"$ref": "#/$defs/name"},
+        "comparison": {"enum": ["integer_cross_multiply"]},
+        "on_missing": {"type": "string"},
+        "on_invalid": {"enum": ["error"]},
+        "bands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {"type": "object", "required": ["upper_percent_inclusive", "output"], "additionalProperties": false,
+               "properties": {"upper_percent_inclusive": {"type": "number"}, "output": {"type": "string"}}},
+              {"type": "object", "required": ["otherwise", "output"], "additionalProperties": false,
+               "properties": {"otherwise": {"const": true}, "output": {"type": "string"}}}
+            ]
+          }
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "required": ["format", "filename", "columns"],
+      "additionalProperties": false,
+      "properties": {
+        "format": {"const": "csv"},
+        "filename": {"type": "string", "pattern": "^[a-z][a-z0-9_]*\\.csv$"},
+        "delimiter": {"type": "string", "minLength": 1, "maxLength": 1},
+        "header": {"const": true},
+        "quotechar": {"type": "string", "minLength": 1, "maxLength": 1},
+        "quoting": {"enum": ["minimal", "all", "nonnumeric", "none"]},
+        "doublequote": {"type": "boolean"},
+        "lineterminator": {"enum": ["\n", "\r\n"]},
+        "encoding": {"enum": ["utf-8", "utf-8-sig"]},
+        "columns": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/name"}}
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*_pattern$": {"type": "string"}
+      },
+      "properties": {
+        "exact_output_columns": {"type": "boolean"},
+        "preserve_row_count": {"type": "boolean"},
+        "unique_columns": {"type": "array", "items": {"$ref": "#/$defs/name"}},
+        "consistent_token_source": {"$ref": "#/$defs/name"},
+        "token_pattern": {"type": "string"},
+        "token_match": {"enum": ["fullmatch"]},
+        "no_empty_output_values": {"type": "boolean"},
+        "check_transformation_against_input": {"type": "boolean"},
+        "on_vault_failure": {"enum": ["error"]},
+        "forbidden_columns": {"type": "array", "items": {"$ref": "#/$defs/name"}},
+        "income_band_values": {"$ref": "#/$defs/values"},
+        "pii_scan_columns": {"oneOf": [{"const": "all"}, {"type": "array", "items": {"$ref": "#/$defs/name"}}]},
+        "pii_match": {"enum": ["search"]},
+        "pii_patterns": {"type": "object", "additionalProperties": {"type": "string"}},
+        "on_failure": {"enum": ["block_export"]},
+        "on_error": {"enum": ["block_export"]},
+        "report_row_values": {"const": false}
+      }
     }
   }
 }

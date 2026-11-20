@@ -143,8 +143,8 @@ table:
 
     output:
       format: csv
-      # 파일 기본 이름 초안. 실행별 저장 폴더는 Workflow에서 지정한다.
-      filename: benefit_review_export.csv
+      # AWS 분류 Lambda와 Athena 테이블(livelihood_payment)이 이 이름으로 경로를 만든다. 실행별 저장 폴더는 Workflow에서 지정한다.
+      filename: livelihood_payment.csv
       delimiter: ','
       header: true
       quotechar: '"'

@@ -102,15 +102,17 @@ def export_record(run_id: str, at: str, status: str) -> dict:
     return {"run_id": run_id, "executed_at": at, "status": status, "files": files}
 
 
-def review(run_id: str, at: str, rules: str, k: int = 7, direct_ok: bool = True) -> dict:
+def review(run_id: str, at: str, rules: str, general_ok: bool = True, direct_ok: bool = True) -> dict:
+    # same items the pipeline's review step writes (rules v3.1)
     checks = [
         {"item": "direct_identifier", "passed": direct_ok, "value": 0 if direct_ok else 1,
-         "reason": None if direct_ok else f"{TABLE}.phone 컬럼이 삭제되지 않음"},
-        {"item": "generalization", "passed": True, "value": "주소 시도, 연령 10세 구간", "reason": None},
-        {"item": "k_anonymity", "passed": k >= 5, "value": k,
-         "reason": None if k >= 5 else f"최소 k={k}, 기준 5 미만 (세종특별자치시 80대 이상 4인 가구)"},
+         "reason": None if direct_ok else f"{TABLE}.region: phone 형식 3건"},
+        {"item": "tokenization", "passed": True, "value": 0, "reason": None},
+        {"item": "generalization", "passed": general_ok, "value": 0 if general_ok else 1,
+         "reason": None if general_ok else f"{TABLE}.age_group: 일반화 형식이 아닌 값 12건"},
+        {"item": "completeness", "passed": True, "value": 0, "reason": None},
     ]
-    return {"run_id": run_id, "reviewed_at": at, "rules_version": rules,
+    return {"run_id": run_id, "reviewed_at": at, "rules_version": rules, "rows": ROWS,
             "passed": all(c["passed"] for c in checks), "checks": checks}
 
 
@@ -131,18 +133,18 @@ def main() -> None:
     rng = random.Random(42)
 
     runs = [
-        ("20261109-01", "2026-11-09T14:00:00+09:00", "ok", "rules-v1.0"),
-        ("20261110-01", "2026-11-10T14:00:00+09:00", "macie", "rules-v1.0"),
-        ("20261111-01", "2026-11-11T14:00:00+09:00", "k_anon", "rules-v1.1"),
-        ("20261111-02", "2026-11-11T16:30:00+09:00", "direct", "rules-v1.1"),
-        ("20261112-01", "2026-11-12T14:00:00+09:00", "ok", "rules-v1.2"),
-        ("20261113-01", "2026-11-13T14:00:00+09:00", "error", "rules-v1.2"),
+        ("20261109-01", "2026-11-09T14:00:00+09:00", "ok", "benefit_review v2.9"),
+        ("20261110-01", "2026-11-10T14:00:00+09:00", "macie", "benefit_review v2.9"),
+        ("20261111-01", "2026-11-11T14:00:00+09:00", "general", "benefit_review v3.0"),
+        ("20261111-02", "2026-11-11T16:30:00+09:00", "direct", "benefit_review v3.0"),
+        ("20261112-01", "2026-11-12T14:00:00+09:00", "ok", "benefit_review v3.1"),
+        ("20261113-01", "2026-11-13T14:00:00+09:00", "error", "benefit_review v3.1"),
     ]
 
     for run_id, at, case, rules in runs:
         rep = ROOT / "reports" / f"run_id={run_id}"
-        if case == "k_anon":
-            write_json(rep / "adequacy_review.json", review(run_id, at, rules, k=2))
+        if case == "general":
+            write_json(rep / "adequacy_review.json", review(run_id, at, rules, general_ok=False))
             continue
         if case == "direct":
             write_json(rep / "adequacy_review.json", review(run_id, at, rules, direct_ok=False))

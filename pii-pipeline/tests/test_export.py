@@ -30,14 +30,12 @@ def test_passed_run_uploads_data_and_reports(rules, out_dir, s3):
 
     assert keys(s3) == [
         "run_id=20261117-01/adequacy_review.json",
-        "run_id=20261117-01/benefit_payment.csv",
-        "run_id=20261117-01/citizen.csv",
-        "run_id=20261117-01/crisis_signal.csv",
+        "run_id=20261117-01/livelihood_payment.csv",
         "run_id=20261117-01/export_record.json",
     ]
-    citizen = next(f for f in record["files"] if f["key"].endswith("citizen.csv"))
-    body = s3.get_object(Bucket=BUCKET, Key=citizen["key"])["Body"].read()
-    assert citizen["rows"] == 4 and citizen["sha256"] == hashlib.sha256(body).hexdigest()
+    [f] = record["files"]
+    body = s3.get_object(Bucket=BUCKET, Key=f["key"])["Body"].read()
+    assert f["rows"] == 6 and f["sha256"] == hashlib.sha256(body).hexdigest()
     stored = json.loads(s3.get_object(Bucket=BUCKET, Key="run_id=20261117-01/export_record.json")["Body"].read())
     assert stored["status"] == "exported"
 

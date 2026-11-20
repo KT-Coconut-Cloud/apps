@@ -28,7 +28,7 @@ def test_security_run_status(security):
     text = security.get("/security/runs").text
     assert text.count("반출 완료") >= 2
     assert "적정성 검토에서 중단" in text and "Macie 검사에서 탐지되어 격리" in text
-    assert "rules-v1.2" in text
+    assert "benefit_review v3.1" in text
 
 
 def test_macie_error_is_not_quarantine(security):
@@ -40,20 +40,20 @@ def test_macie_error_is_not_quarantine(security):
 
 def test_aborted_run_has_no_export(security):
     text = security.get("/security/runs/20261111-01").text
-    assert "k-익명성" in text
+    assert "준식별자 일반화" in text
     assert "반출하지 않았습니다" in text
 
 
 def test_failures_counts_reasons(security):
     text = security.get("/security/failures").text
-    assert "k-익명성" in text and "직접식별자 잔존" in text and "휴대전화 번호" in text
+    assert "준식별자 일반화" in text and "직접식별자 잔존" in text and "휴대전화 번호" in text
 
 
 def test_failures_filters_by_date(security):
     text = security.get("/security/failures?start=2026-11-12&end=2026-11-12").text
-    assert "rules-v1.2" in text and "rules-v1.0" not in text
+    assert "benefit_review v3.1" in text and "benefit_review v2.9" not in text
     everything = security.get("/security/failures?start=&end=").text
-    assert "rules-v1.0" in everything and "rules-v1.1" in everything
+    assert "benefit_review v2.9" in everything and "benefit_review v3.0" in everything
 
 
 def test_failures_partial_for_htmx(security):
