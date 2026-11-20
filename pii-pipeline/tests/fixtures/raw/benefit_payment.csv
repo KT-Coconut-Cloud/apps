@@ -1,4 +1,0 @@
-payment_id,citizen_id,recipient_type,benefit_type,pay_month,amount
-9001,1,일반,생계,2025-04,713000
-9002,2,일반,주거,2025-07,341000
-9003,3,조건부,생계,2024-02,1023000

@@ -22,9 +22,9 @@ def run(rules: Rules, out_dir: Path, review: dict, bucket: str, s3) -> dict:
     files = []
 
     if review["passed"]:
-        for table in rules.tables:
-            body = (Path(out_dir) / f"{table}.csv").read_bytes()
-            key = base + f"{table}.csv"
+        for table in rules.tables.values():
+            body = (Path(out_dir) / table.filename).read_bytes()
+            key = base + table.filename
             s3.put_object(Bucket=bucket, Key=key, Body=body, ContentType="text/csv")
             files.append({"key": key, "rows": max(body.count(b"\n") - 1, 0), "sha256": hashlib.sha256(body).hexdigest()})
             log.info("uploaded %s", key)

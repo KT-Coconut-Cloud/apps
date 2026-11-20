@@ -40,11 +40,16 @@ def main(argv=None) -> int:
     review_path = args.work / "adequacy_review.json"
 
     if args.command == "validate-rules":
-        print(f"{rules.version}: {len(rules.tables)} table(s) ok")
+        for t in rules.tables.values():
+            print(f"{rules.scenario} v{rules.version}: {t.name} -> {t.filename} ({len(t.output_columns)} columns) ok")
         return 0
 
     if args.command == "pseudonymize":
-        pseudonymize.run(rules, out_dir, tokenizer.from_env(), args.source_dir)
+        try:
+            pseudonymize.run(rules, out_dir, tokenizer.from_profile(rules.vault_profile), args.source_dir)
+        except (pseudonymize.TransformError, tokenizer.TokenizerError) as e:
+            print(f"pseudonymize failed, nothing written: {e}", file=sys.stderr)
+            return 1
         return 0
 
     if args.command == "review":
@@ -54,7 +59,9 @@ def main(argv=None) -> int:
         result = review.run(rules, out_dir, args.run_id)
         review_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         for c in result["checks"]:
-            print(f"{'PASS' if c['passed'] else 'FAIL'} {c['item']}: {c['value']} {c['reason'] or ''}".rstrip())
+            print(f"{'PASS' if c['passed'] else 'FAIL'} {c['item']}")
+        for line in result["problems"]:
+            print(f"  {line}")
         return 0
 
     if args.command == "export":
@@ -74,7 +81,11 @@ def main(argv=None) -> int:
         return 0
 
     if args.command == "leakcheck":
-        pseudonymize.run(rules, out_dir, tokenizer.LocalTokenizer(b"ci-only"), args.raw_dir)
+        try:
+            pseudonymize.run(rules, out_dir, tokenizer.LocalTokenizer(b"ci-only"), args.raw_dir)
+        except pseudonymize.TransformError as e:
+            print(f"LEAK pseudonymize failed: {e}", file=sys.stderr)
+            return 1
         problems = leakcheck.run(rules, args.raw_dir, out_dir)
         for line in problems:
             print(f"LEAK {line}", file=sys.stderr)

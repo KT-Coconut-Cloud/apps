@@ -1,25 +1,32 @@
 {
   "run_id": "20261111-02",
   "reviewed_at": "2026-11-11T16:30:00+09:00",
-  "rules_version": "rules-v1.1",
+  "rules_version": "benefit_review v3.0",
+  "rows": 2000,
   "passed": false,
   "checks": [
     {
       "item": "direct_identifier",
       "passed": false,
       "value": 1,
-      "reason": "livelihood_payment.phone 컬럼이 삭제되지 않음"
+      "reason": "livelihood_payment.region: phone 형식 3건"
+    },
+    {
+      "item": "tokenization",
+      "passed": true,
+      "value": 0,
+      "reason": null
     },
     {
       "item": "generalization",
       "passed": true,
-      "value": "주소 시도, 연령 10세 구간",
+      "value": 0,
       "reason": null
     },
     {
-      "item": "k_anonymity",
+      "item": "completeness",
       "passed": true,
-      "value": 7,
+      "value": 0,
       "reason": null
     }
   ]

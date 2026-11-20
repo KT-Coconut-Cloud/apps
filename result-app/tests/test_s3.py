@@ -73,7 +73,7 @@ def test_security_pages_read_bucket(s3_client):
     client, _, writes = s3_client
     login(client, "security01", "pw-security")
     assert client.get("/security/runs").text.count("반출 완료") >= 2
-    assert "k-익명성" in client.get("/security/runs/20261111-01").text
+    assert "준식별자 일반화" in client.get("/security/runs/20261111-01").text
     assert writes == []
 
 

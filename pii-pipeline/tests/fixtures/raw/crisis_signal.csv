@@ -1,4 +1,0 @@
-signal_id,citizen_id,signal_type,detected_date,consult_result,linked_service
-5001,1,단전,2025-03-02,지원 연계,긴급복지
-5002,2,통신비 체납,2025-06-18,연락 불가,없음
-5003,3,단수,2025-09-07,지원 불필요,없음

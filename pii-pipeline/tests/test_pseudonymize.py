@@ -1,63 +1,129 @@
-import csv
-from datetime import date
+import re
 
 import pytest
 
-from pipeline.patterns import TOKEN
-from pipeline.pseudonymize import METHODS, TransformError, transform_table
-from pipeline.tokenizer import LocalTokenizer
+from pipeline.pseudonymize import TransformError, ratio_band, transform_table, write_table
+from pipeline.tokenizer import LocalTokenizer, TokenizerError
+from tests.conftest import read_out
+
+TOKEN = re.compile(r"^vault:v1:[A-Za-z0-9+/]{43}=$")
 
 
-def read(path):
-    with path.open(encoding="utf-8", newline="") as f:
-        return list(csv.DictReader(f))
+def run(table, rows, tokenizer=None):
+    return transform_table(table, rows, tokenizer or LocalTokenizer(b"test"))
 
 
-def test_output_has_only_columns_from_rules(out_dir):
-    citizen = read(out_dir / "citizen.csv")
-    assert list(citizen[0]) == ["citizen_id", "sigungu", "household_type"]
-    assert citizen[0]["sigungu"] == "서울 강남구"
-    assert all(TOKEN.match(r["citizen_id"]) for r in citizen)
-
-    signal = read(out_dir / "crisis_signal.csv")
-    assert signal[0] == {**signal[0], "crisis_type": "단전", "signal_month": "2025-03", "linked": "1"}
-    assert signal[1]["linked"] == "0"
-
-    payment = read(out_dir / "benefit_payment.csv")
-    assert payment[2] == {**payment[2], "benefit_type": "생계급여", "year": "2024", "monthly_amount": "1023000"}
+def test_output_matches_the_rules(table, out_dir):
+    out = read_out(out_dir, table)
+    assert list(out[0]) == list(table.output_columns)
+    assert out[0] == {**out[0], "region": "서울특별시", "age_group": "30대", "gender": "남", "pay_month": "2025-12",
+                      "benefit_type": "생계급여(일반)", "household_size": "1", "income_ratio_band": "LE80"}
+    assert all(TOKEN.match(r["payment_token"]) and TOKEN.match(r["household_token"]) for r in out)
 
 
-def test_same_person_gets_the_same_token_in_every_table(out_dir):
-    citizen = read(out_dir / "citizen.csv")
-    signal = read(out_dir / "crisis_signal.csv")
-    payment = read(out_dir / "benefit_payment.csv")
-    assert citizen[0]["citizen_id"] == signal[0]["citizen_id"] == payment[0]["citizen_id"]
-    assert len({r["citizen_id"] for r in citizen}) == 4
+def test_file_format(table, out_dir):
+    body = (out_dir / table.filename).read_bytes()
+    assert body.startswith("﻿".encode()) and b"\r\n" in body
 
 
-def test_column_missing_from_rules_is_not_written(rules):
-    rows = [{"signal_id": "1", "citizen_id": "1", "signal_type": "단전", "detected_date": "2025-01-01",
-             "consult_result": "지원 연계", "linked_service": "없음", "memo": "010-1234-5678"}]
-    out = transform_table(rules.tables["crisis_signal"], rows, LocalTokenizer(b"k"))
-    assert "memo" not in out[0]
+def test_generalization(table, out_dir):
+    out = read_out(out_dir, table)
+    assert [r["age_group"] for r in out] == ["30대", "60대", "70대", "0대", "80대", "120대"]
+    # address with nothing after the sido name, household of 6, missing review row
+    assert out[3]["region"] == "세종특별자치시" and out[3]["household_size"] == "5+"
+    assert out[4]["household_size"] == "unknown" and out[4]["income_ratio_band"] == "NO_DATA"
 
 
-def test_error_message_has_no_values(rules):
-    rows = [{"citizen_id": "1", "name": "홍길동", "rrn": "x", "birth_date": "x", "gender": "남", "phone": "x",
-             "email": "x", "address": "주소없음", "household_type": "1인 가구", "income_level": "x"}]
+def test_same_household_gets_the_same_token(table, out_dir):
+    out = read_out(out_dir, table)
+    assert out[1]["household_token"] == out[2]["household_token"]
+    assert len({r["household_token"] for r in out}) == 5
+    assert len({r["payment_token"] for r in out}) == 6
+
+
+def test_token_input_uses_prefix_and_key(table, raw_rows):
+    seen = []
+
+    class Spy(LocalTokenizer):
+        def tokens(self, values, key_name, key_version):
+            seen.append((key_name, key_version, values[0]))
+            return super().tokens(values, key_name, key_version)
+
+    run(table, raw_rows, Spy(b"x"))
+    assert seen == [("payment-id", 1, "payment:v1:900001"), ("household-id", 1, "household:v1:7001")]
+
+
+@pytest.mark.parametrize("num,den,band", [
+    ("80", "100", "LE80"), ("81", "100", "GT80_LE100"), ("100", "100", "GT80_LE100"),
+    ("120", "100", "GT100_LE120"), ("121", "100", "GT120"), ("0", "100", "LE80"),
+    ("", "100", "NO_DATA"), ("50", "", "NO_DATA"),
+])
+def test_ratio_band_edges(table, num, den, band):
+    assert ratio_band(table.derived[0], num, den) == band
+
+
+def test_zero_limit_is_an_error(table):
+    with pytest.raises(TransformError):
+        ratio_band(table.derived[0], "10", "0")
+
+
+@pytest.mark.parametrize("column,value", [
+    ("payment_id", "0900007"),        # not canonical
+    ("payment_id", ""),               # not nullable
+    ("address", "서울 강남구"),        # short sido name is not in allowed_values
+    ("address", "서울특별시강남구"),    # no space after the sido name
+    ("age", "121"),
+    ("age", "-1"),
+    ("gender", "M"),
+    ("pay_month", "2025-13"),
+    ("benefit_type", "주거급여"),
+    ("household_size", "0"),
+    ("recognized_income", "-5"),
+])
+def test_bad_input_value_stops_the_run(table, raw_rows, column, value):
+    raw_rows[0][column] = value
     with pytest.raises(TransformError) as e:
-        transform_table(rules.tables["citizen"], rows, LocalTokenizer(b"k"))
-    assert "주소없음" not in str(e.value) and "citizen.address row 1" in str(e.value)
+        run(table, raw_rows)
+    # row number and column only, never the value
+    assert f".{column} row 1" in str(e.value) and (value == "" or value not in str(e.value))
 
 
-def test_age_band():
-    today = date(2026, 11, 17)
-    assert METHODS["age_band"]("1990-01-01", today) == "35~39세"
-    assert METHODS["age_band"]("1990-12-31", today) == "35~39세"
-    assert METHODS["age_band"]("1930-01-01", today) == "90세 이상"
+def test_unknown_input_column_stops_the_run(table, raw_rows):
+    for r in raw_rows:
+        r["rrn"] = "900101-1XXXXXX"
+    with pytest.raises(TransformError, match="not in the rules"):
+        run(table, raw_rows)
 
 
-def test_each_transit_key_gives_different_tokens():
-    tok = LocalTokenizer(b"k")
-    assert tok.tokens(["100"], "payment-id") != tok.tokens(["100"], "household-id")
-    assert tok.tokens(["100"], "payment-id") == tok.tokens(["100"], "payment-id")
+def test_missing_input_column_stops_the_run(table, raw_rows):
+    for r in raw_rows:
+        del r["phone"]
+    with pytest.raises(TransformError, match="no column"):
+        run(table, raw_rows)
+
+
+def test_vault_failure_stops_the_run(table, raw_rows):
+    class Down:
+        def tokens(self, values, key_name, key_version):
+            raise TokenizerError("vault transit/hmac/payment-id/sha2-256: connection refused")
+
+    with pytest.raises(TransformError, match="connection refused"):
+        run(table, raw_rows, Down())
+
+
+def test_bad_tokens_are_caught_by_output_validation(table, raw_rows):
+    class Broken:
+        def tokens(self, values, key_name, key_version):
+            return ["same" for _ in values]
+
+    with pytest.raises(TransformError) as e:
+        run(table, raw_rows, Broken())
+    msg = str(e.value)
+    assert "토큰 형식이 아닌 값" in msg and "중복 값" in msg and "다른 household_id에 같은 토큰" in msg
+
+
+def test_nothing_is_written_when_the_run_fails(table, raw_rows, tmp_path):
+    raw_rows[0]["age"] = "999"
+    with pytest.raises(TransformError):
+        write_table(tmp_path, table, run(table, raw_rows))
+    assert not (tmp_path / table.filename).exists()

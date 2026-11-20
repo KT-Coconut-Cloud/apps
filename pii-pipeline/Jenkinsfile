@@ -18,7 +18,7 @@ pipeline {
         script {
           env.SHA = sh(script: 'git rev-parse --short=7 HEAD', returnStdout: true).trim()
           env.HAS_RULES = fileExists('rules/pii-rules.yaml') ? 'true' : 'false'
-          env.HAS_TESTDATA = fileExists('testdata/raw/citizen.csv') ? 'true' : 'false'
+          env.HAS_TESTDATA = fileExists('testdata/raw/benefit_review_joined.csv') ? 'true' : 'false'
         }
         echo "build ${env.IMAGE}:${env.SHA} (rules: ${env.HAS_RULES}, testdata: ${env.HAS_TESTDATA})"
       }
