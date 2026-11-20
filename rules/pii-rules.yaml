@@ -21,10 +21,10 @@ table:
 
     columns:
       payment_id:
-        action: hmac
-        output: payment_token
+        action: tokenize
+        as: payment_token
         provider: vault_transit
-        key_name: payment-id-key # Vault가 사용할 key 이름. 실제 키 값은 Vault에만 존재.
+        key: payment-id # Vault가 사용할 key 이름. 실제 키 값은 Vault에만 존재.
         key_version: 1
         algorithm: sha2-256
         input_format: canonical_positive_integer_utf8
@@ -33,10 +33,10 @@ table:
         nullable: false
 
       household_id:
-        action: hmac
-        output: household_token
+        action: tokenize
+        as: household_token
         provider: vault_transit
-        key_name: household-id-key # Valut가 사용할 key 이름. 실제 키 값은 Vault에만 존재.
+        key: household-id # Valut가 사용할 key 이름. 실제 키 값은 Vault에만 존재.
         key_version: 1
         algorithm: sha2-256
         input_format: canonical_positive_integer_utf8
@@ -55,7 +55,7 @@ table:
         interval: 10
         input_min: 0
         input_max: 120
-        output: age_group
+        as: age_group
         output_template: "{lower}대"
         nullable: false
 
@@ -70,7 +70,7 @@ table:
       address:
         action: generalize
         method: leading_sido_name
-        output: region
+        as: region
         match: exact_leading_name_followed_by_whitespace_or_end
         nullable: false
         on_unknown: error
