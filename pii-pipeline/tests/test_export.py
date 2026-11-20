@@ -30,8 +30,8 @@ def test_passed_run_uploads_data_and_reports(rules, out_dir, s3):
 
     assert keys(s3) == [
         "run_id=20261117-01/adequacy_review.json",
-        "run_id=20261117-01/livelihood_payment.csv",
         "run_id=20261117-01/export_record.json",
+        "run_id=20261117-01/livelihood_payment.csv",
     ]
     [f] = record["files"]
     body = s3.get_object(Bucket=BUCKET, Key=f["key"])["Body"].read()
