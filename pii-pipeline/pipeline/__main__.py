@@ -6,7 +6,7 @@ import re
 import sys
 from pathlib import Path
 
-from pipeline import export, leakcheck, pseudonymize, review, tokenizer
+from pipeline import events, export, leakcheck, pseudonymize, review, tokenizer
 from pipeline.rules import InvalidRules, load_rules
 
 RUN_ID = re.compile(r"^\d{8}-\d{2}$")
@@ -24,7 +24,8 @@ def main(argv=None) -> int:
     s = sub.add_parser("pseudonymize")
     s.add_argument("--source-dir", type=Path, help="read CSV files instead of MySQL")
     s = sub.add_parser("review")
-    s.add_argument("--run-id", required=True)
+    # the workflow passes RUN_ID to every step; --run-id is kept for local runs
+    s.add_argument("--run-id", default=os.environ.get("RUN_ID"))
     s = sub.add_parser("export")
     s.add_argument("--bucket", default=os.environ.get("LANDING_BUCKET"))
     s = sub.add_parser("leakcheck")
@@ -46,14 +47,16 @@ def main(argv=None) -> int:
 
     if args.command == "pseudonymize":
         try:
-            pseudonymize.run(rules, out_dir, tokenizer.from_profile(rules.vault_profile), args.source_dir)
+            counts = pseudonymize.run(rules, out_dir, tokenizer.from_profile(rules.vault_profile), args.source_dir)
         except (pseudonymize.TransformError, tokenizer.TokenizerError) as e:
             print(f"pseudonymize failed, nothing written: {e}", file=sys.stderr)
+            events.emit("pseudonymize", "failed", 0)
             return 1
+        events.emit("pseudonymize", "success", sum(counts.values()))
         return 0
 
     if args.command == "review":
-        if not RUN_ID.match(args.run_id):
+        if not args.run_id or not RUN_ID.match(args.run_id):
             print("run id must look like 20261117-01", file=sys.stderr)
             return 1
         result = review.run(rules, out_dir, args.run_id)
@@ -62,6 +65,9 @@ def main(argv=None) -> int:
             print(f"{'PASS' if c['passed'] else 'FAIL'} {c['item']}")
         for line in result["problems"]:
             print(f"  {line}")
+        # a failed review still exits 0: the export step uploads the review and blocks the data
+        events.emit("review", "success" if result["passed"] else "failed", result["rows"], run_id=args.run_id,
+                    failed_checks=[c["item"] for c in result["checks"] if not c["passed"]])
         return 0
 
     if args.command == "export":
@@ -73,10 +79,18 @@ def main(argv=None) -> int:
         result = json.loads(review_path.read_text(encoding="utf-8"))
         # on-prem reaches S3 through the interface endpoint over WireGuard
         s3 = boto3.client("s3", endpoint_url=os.environ.get("S3_ENDPOINT_URL") or None)
-        record = export.run(rules, out_dir, result, args.bucket, s3)
+        try:
+            record = export.run(rules, out_dir, result, args.bucket, s3)
+        except Exception:
+            # S3 errors; the traceback still goes to the log
+            events.emit("export", "failed", 0, run_id=result["run_id"])
+            raise
+        rows = sum(f["rows"] for f in record["files"])
         if record["status"] != "exported":
             print("export blocked: adequacy review did not pass", file=sys.stderr)
+            events.emit("export", "failed", rows, run_id=record["run_id"])
             return 2
+        events.emit("export", "success", rows, run_id=record["run_id"])
         print(f"exported {len(record['files'])} file(s) for run {record['run_id']}")
         return 0
 
