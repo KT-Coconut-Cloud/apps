@@ -1,0 +1,20 @@
+# 프로젝트 Python에서 지원하도록 구현해야 하는 설정 형식이다. (= Python에서 사용할 Vault 접속·인증 설정 예시.)
+# 비밀 키, Root Token, Vault Token, ServiceAccount JWT 값은 넣지 않는다.
+provider: vault_transit
+address_env: VAULT_ADDR
+ca_cert_path_env: VAULT_CACERT
+verify_tls: true
+transit_mount: transit
+timeout_seconds: 10
+auth:
+  method: kubernetes
+  mount: kubernetes
+  role_env: VAULT_ROLE
+  service_account_token_path: /var/run/secrets/kubernetes.io/serviceaccount/token
+  expected_namespace: pii-job
+  expected_service_account: pii-pipeline
+
+# Job 실행 환경에서 설정할 공개 설정 예시:
+# VAULT_ADDR=https://vault-active.vault.svc.cluster.local:8200
+# VAULT_CACERT=<pii-job Pod에 마운트한 ca.crt의 실제 경로>
+# VAULT_ROLE=pii-pipeline
