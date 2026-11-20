@@ -20,17 +20,21 @@ sys.path.insert(0, str(ROOT))
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.auth import hash_password  # noqa: E402
+from app.catalog import CATALOG  # noqa: E402
 from app.config import Settings  # noqa: E402
 from app.main import create_app  # noqa: E402
 
 DEMO_REQUESTS = [
-    {"run_id": "20261112-01", "scenario": "crisis_link_rate", "from": "2026-05", "to": "2026-10",
-     "purpose": "2026년 하반기 위기가구 발굴 사업 연계율 점검"},
-    {"run_id": "20261112-01", "scenario": "crisis_link_rate", "from": "2026-08", "to": "2026-08",
-     "purpose": "8월 단전, 단수 가구 연계 현황 확인"},
-    {"run_id": "20261112-01", "scenario": "basic_living_status", "from": "2023", "to": "2025",
-     "purpose": "최근 3년 기초생활보장 급여별 수급 추이 확인"},
+    {"run_id": "20261112-01", "scenario": "livelihood_recheck", "pay_month": "2025-12",
+     "purpose": "2025년 12월 생계급여 지급 건 사후 점검"},
+    {"run_id": "20261112-01", "scenario": "recheck_by_household", "pay_month": "2025-12",
+     "purpose": "가구원 수별 재확인 필요 비율 비교"},
+    {"run_id": "20261112-01", "scenario": "recheck_by_age", "pay_month": "2025-12",
+     "purpose": "고령 수급 가구 재확인 필요 현황 확인"},
+    {"run_id": "20261112-01", "scenario": "recheck_excess", "pay_month": "2025-12",
+     "purpose": "재확인 조사 우선순위 선정"},
 ]
+FIRST = next(iter(CATALOG))
 
 NOTICE = "정적 미리보기: 샘플 데이터로 미리 만든 화면입니다. 신청이나 기간 조회 같은 입력은 저장되지 않습니다."
 
@@ -39,8 +43,9 @@ def page_path(path: str, query: str = "") -> str:
     """URL path in the app -> URL path on the static site."""
     if path.startswith("/static/") or path.endswith(".csv"):
         return path.lstrip("/") + (f"?{query}" if query and path.startswith("/static/") else "")
-    if path == "/policy/analyses/new" and parse_qs(query).get("scenario") == ["basic_living_status"]:
-        return "policy/analyses/new/basic_living_status/"
+    scenario = (parse_qs(query).get("scenario") or [FIRST])[0]
+    if path == "/policy/analyses/new" and scenario != FIRST and scenario in CATALOG:
+        return f"policy/analyses/new/{scenario}/"
     path = path.strip("/")
     return f"{path}/" if path else ""
 
@@ -63,7 +68,7 @@ def rewrite(html: str, base: str, demo_request: str) -> str:
                         f'<form method="get" action="/policy/analyses/{demo_request}" class="rv-form">')
     html = html.replace(
         'hx-get="/policy/analyses/new/params" hx-target="#params" hx-trigger="change"',
-        f"onchange=\"location.href='{base}policy/analyses/new/'+(this.value==='crisis_link_rate'?'':this.value+'/')\"")
+        f"onchange=\"location.href='{base}policy/analyses/new/'+(this.value==='{FIRST}'?'':this.value+'/')\"")
     html = re.sub(r'\s+hx-[a-z-]+="[^"]*"', "", html)
 
     def link(m):
@@ -105,7 +110,8 @@ def main() -> None:
         ids.append(res.headers["location"].rsplit("/", 1)[1])
     for path in ["/policy/analyses/new", "/policy/analyses", "/policy/results", "/policy/datasets"]:
         pages[page_path(path)] = policy.get(path).text
-    pages["policy/analyses/new/basic_living_status/"] = policy.get("/policy/analyses/new?scenario=basic_living_status").text
+    for key in list(CATALOG)[1:]:
+        pages[f"policy/analyses/new/{key}/"] = policy.get(f"/policy/analyses/new?scenario={key}").text
     for request_id in ids:
         pages[f"policy/analyses/{request_id}/"] = policy.get(f"/policy/analyses/{request_id}").text
         pages[f"policy/analyses/{request_id}/result.csv"] = policy.get(f"/policy/analyses/{request_id}/result.csv").content

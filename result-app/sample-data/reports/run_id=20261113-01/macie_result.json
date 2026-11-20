@@ -1,0 +1,14 @@
+{
+  "run_id": "20261113-01",
+  "scanned_at": "2026-11-13T14:20:00+09:00",
+  "verdict": "ERROR",
+  "error": "run_id=20261113-01/livelihood_payment.csv: sha256 mismatch",
+  "files": [
+    {
+      "key": "run_id=20261113-01/livelihood_payment.csv",
+      "detected": false,
+      "types": [],
+      "classification": "quarantine"
+    }
+  ]
+}

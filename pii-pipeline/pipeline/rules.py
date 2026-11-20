@@ -18,6 +18,7 @@ class Column:
     method: str | None = None
     values: dict = field(default_factory=dict)
     default: str | int | None = None
+    key: str | None = None  # Vault transit key, tokenize only
 
 
 @dataclass(frozen=True)
@@ -31,8 +32,13 @@ class Table:
         return tuple(c for c in self.columns if c.action != "drop")
 
     @property
+    def token_columns(self) -> tuple[str, ...]:
+        return tuple(c.name for c in self.columns if c.action == "tokenize")
+
+    @property
     def token_column(self) -> str | None:
-        return next((c.name for c in self.columns if c.action == "tokenize"), None)
+        # first tokenized column in the rules is the unit k-anonymity counts
+        return next(iter(self.token_columns), None)
 
 
 @dataclass(frozen=True)
@@ -65,6 +71,7 @@ def load_rules(path: Path, schema_path: Path) -> Rules:
                 method=c.get("method"),
                 values={str(k): v for k, v in c.get("values", {}).items()},
                 default=c.get("default"),
+                key=c.get("key"),
             )
             for src, c in t["columns"].items()
         )

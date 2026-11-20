@@ -13,7 +13,7 @@
     {
       "item": "generalization",
       "passed": true,
-      "value": "주소 시군구, 생년 5세 구간",
+      "value": "주소 시도, 연령 10세 구간",
       "reason": null
     },
     {

@@ -55,3 +55,9 @@ def test_age_band():
     assert METHODS["age_band"]("1990-01-01", today) == "35~39세"
     assert METHODS["age_band"]("1990-12-31", today) == "35~39세"
     assert METHODS["age_band"]("1930-01-01", today) == "90세 이상"
+
+
+def test_each_transit_key_gives_different_tokens():
+    tok = LocalTokenizer(b"k")
+    assert tok.tokens(["100"], "payment-id") != tok.tokens(["100"], "household-id")
+    assert tok.tokens(["100"], "payment-id") == tok.tokens(["100"], "payment-id")

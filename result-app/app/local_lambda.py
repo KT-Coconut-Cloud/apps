@@ -1,6 +1,6 @@
 """Local stand-in for the analysis-request and analysis-finalize Lambdas.
 
-Reads data/run_id=<id>/ under data_dir with pandas instead of Athena and writes
+Reads data/<table>/run_id=<id>/ under data_dir with pandas instead of Athena and writes
 the same files the real functions write, so the app can't tell the difference.
 """
 
@@ -11,40 +11,68 @@ from pathlib import Path
 import pandas as pd
 
 from app.analyses import now
-from app.catalog import CATALOG, InvalidParams, Scenario, clean_params
+from app.catalog import CATALOG, TABLE, InvalidParams, Scenario, available, clean_params
 from app.storage import RUN_ID
 
 
-def crisis_link_rate(t: dict[str, pd.DataFrame], p: dict) -> pd.DataFrame:
-    df = t["crisis_signal"].merge(t["citizen"], on="citizen_id")
-    df = df[(df["signal_month"] >= p["from"]) & (df["signal_month"] <= p["to"])]
-    if p["crisis_type"]:
-        df = df[df["crisis_type"] == p["crisis_type"]]
-    if p["sigungu"]:
-        df = df[df["sigungu"] == p["sigungu"]]
-
-    keys = ["sigungu", "crisis_type"]
-    households = df.groupby(keys)["citizen_id"].nunique().rename("households")
-    linked = df[df["linked"] == 1].groupby(keys)["citizen_id"].nunique().rename("linked")
-    out = pd.concat([households, linked], axis=1).fillna(0).astype(int)
-    return out.reset_index().sort_values(keys)
+def _filter(df: pd.DataFrame, p: dict) -> pd.DataFrame:
+    df = df[df["pay_month"] == p["pay_month"]]
+    for col in ("region", "age_group", "household_size", "gender"):
+        if p.get(col):
+            df = df[df[col] == p[col]]
+    return df
 
 
-def basic_living_status(t: dict[str, pd.DataFrame], p: dict) -> pd.DataFrame:
-    df = t["benefit_payment"].merge(t["citizen"], on="citizen_id")
-    df = df[(df["year"] >= int(p["from"])) & (df["year"] <= int(p["to"]))]
-    if p["household_type"]:
-        df = df[df["household_type"] == p["household_type"]]
-    if p["benefit_type"]:
-        df = df[df["benefit_type"] == p["benefit_type"]]
-
-    keys = ["year", "household_type", "benefit_type"]
-    out = df.groupby(keys).agg(recipients=("citizen_id", "nunique"), avg_payment=("monthly_amount", "mean"))
-    out["avg_payment"] = out["avg_payment"].round(-2).astype(int)
-    return out.reset_index().sort_values(keys)
+def _count(df: pd.DataFrame, key: str, flags: dict, total: bool = True) -> pd.DataFrame:
+    cols = (["payments"] if total else []) + list(flags)
+    out = df.assign(payments=1, **{name: rule(df).astype(int) for name, rule in flags.items()})
+    out = out.groupby(key)[cols].sum().astype(int)
+    return out.reset_index().sort_values(key)
 
 
-QUERIES = {"crisis_link_rate": crisis_link_rate, "basic_living_status": basic_living_status}
+WITHIN = ("LE80", "GT80_LE100")
+RECHECK = ("GT100_LE120", "GT120")
+CHECK = {
+    "within": lambda d: d["income_ratio_band"].isin(WITHIN),
+    "recheck": lambda d: d["income_ratio_band"].isin(RECHECK),
+    "no_data": lambda d: d["income_ratio_band"] == "NO_DATA",
+}
+
+
+def recheck_excess(df: pd.DataFrame, p: dict) -> pd.DataFrame:
+    df = _filter(df, p)
+    df = df[df["income_ratio_band"].isin(RECHECK)]
+    return _count(df, "region", {
+        "recheck": lambda d: d["income_ratio_band"].isin(RECHECK),
+        "over_100_120": lambda d: d["income_ratio_band"] == "GT100_LE120",
+        "over_120": lambda d: d["income_ratio_band"] == "GT120",
+    }, total=False)
+
+
+def paid_after_death(df: pd.DataFrame, p: dict) -> pd.DataFrame:
+    return _count(_filter(df, p), "age_group", {
+        "after_death": lambda d: (d["death_month"] != "") & (d["death_month"] < d["pay_month"]),
+        "same_month": lambda d: d["death_month"] == d["pay_month"],
+    })
+
+
+QUERIES = {
+    "livelihood_recheck": lambda df, p: _count(_filter(df, p), "region", CHECK),
+    "recheck_by_household": lambda df, p: _count(_filter(df, p), "household_size", CHECK),
+    "recheck_by_age": lambda df, p: _count(_filter(df, p), "age_group", CHECK),
+    "recheck_excess": recheck_excess,
+    "obligor_asset_check": lambda df, p: _count(_filter(df, p), "household_size", {
+        "no_obligor": lambda d: d["obligor_asset_band"] == "NONE",
+        "within": lambda d: d["obligor_asset_band"] == "WITHIN",
+        "over": lambda d: d["obligor_asset_band"] == "OVER",
+        "no_data": lambda d: d["obligor_asset_band"] == "NO_DATA",
+    }),
+    "paid_after_death": paid_after_death,
+    "long_stay_abroad": lambda df, p: _count(_filter(df, p), "region", {
+        "abroad": lambda d: d["abroad_days_band"].isin(["LE60", "GT60"]),
+        "over_60": lambda d: d["abroad_days_band"] == "GT60",
+    }),
+}
 
 
 def suppress(df: pd.DataFrame, scenario: Scenario, min_cell: int) -> tuple[pd.DataFrame, int]:
@@ -79,11 +107,25 @@ class LocalLambda:
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
         tmp.replace(path)
 
+    def _ready(self, run_id: str) -> bool:
+        path = self.root / "results" / f"run_id={run_id}" / "manifest.json"
+        return path.is_file() and json.loads(path.read_text(encoding="utf-8")).get("adequacy_passed") is True
+
     def _next_id(self) -> str:
         day = now().strftime("%Y%m%d")
         base = self.root / "results" / "requests"
         used = [int(p.name[-4:]) for p in base.glob(f"req-{day}-*")] if base.exists() else []
         return f"req-{day}-{max(used, default=0) + 1:04d}"
+
+    def _data_path(self, run_id: str) -> Path:
+        return self.root / "data" / TABLE / f"run_id={run_id}" / f"{TABLE}.csv"
+
+    def columns(self, run_id: str) -> list[str] | None:
+        path = self._data_path(run_id)
+        if not RUN_ID.match(run_id) or not path.is_file():
+            return None
+        with path.open(encoding="utf-8") as f:
+            return f.readline().strip().split(",")
 
     def submit(self, payload: dict) -> dict:
         scenario = CATALOG.get(payload.get("scenario"))
@@ -94,8 +136,11 @@ class LocalLambda:
         except InvalidParams as e:
             return {"error": "invalid_params", "detail": str(e)}
         run_id = payload.get("run_id") or ""
-        if not RUN_ID.match(run_id) or not (self.root / "data" / f"run_id={run_id}").is_dir():
+        if not RUN_ID.match(run_id) or not self._ready(run_id):
             return {"error": "run_not_ready", "detail": run_id}
+        columns = self.columns(run_id)
+        if scenario.key not in available(set(columns) if columns else None):
+            return {"error": "template_unavailable", "detail": scenario.key}
         purpose = (payload.get("purpose") or "").strip()
         if not payload.get("requested_by") or not purpose or len(purpose) > 200:
             return {"error": "invalid_params", "detail": "requested_by, purpose"}
@@ -127,11 +172,8 @@ class LocalLambda:
         out = self._request_dir(request["request_id"])
         result = {"status": "succeeded", "rows": 0, "suppressed_cells": 0, "error": None}
         try:
-            tables = {
-                name: pd.read_csv(self.root / "data" / f"run_id={request['run_id']}" / f"{name}.csv")
-                for name in ("citizen", "crisis_signal", "benefit_payment")
-            }
-            df = QUERIES[scenario.key](tables, request["params"])
+            data = pd.read_csv(self._data_path(request["run_id"]), dtype=str, keep_default_na=False)
+            df = QUERIES[scenario.key](data, request["params"])
             df, hidden = suppress(df, scenario, self.min_cell)
             df[list(scenario.columns)].to_csv(out / "result.csv", index=False)
             result.update(rows=len(df), suppressed_cells=hidden)

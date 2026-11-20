@@ -3,7 +3,7 @@ from fastapi.responses import RedirectResponse, Response
 
 from app.analyses import list_analyses, load_analysis
 from app.auth import User, require_role
-from app.catalog import CATALOG, InvalidParams, clean_params
+from app.catalog import CATALOG, InvalidParams, available, clean_params
 from app.config import Settings, get_settings
 from app.results import VIEWS
 from app.storage import InvalidId, Store, check_request_id
@@ -15,6 +15,7 @@ ERRORS = {
     "unknown_scenario": "지원하지 않는 분석 템플릿입니다.",
     "invalid_params": "조건 값이 올바르지 않습니다.",
     "run_not_ready": "선택한 데이터셋은 아직 분석에 쓸 수 없습니다.",
+    "template_unavailable": "선택한 데이터셋에는 이 템플릿에 필요한 항목이 없습니다.",
     "no_purpose": "분석 목적을 200자 이내로 입력하세요.",
 }
 
@@ -30,6 +31,13 @@ def ready_runs(store: Store) -> list[dict]:
         if manifest and manifest.get("adequacy_passed"):
             runs.append(manifest)
     return runs
+
+
+def run_templates(request: Request, run_id: str | None) -> dict:
+    if not run_id:
+        return available(None)
+    columns = request.app.state.analysis.columns(run_id)
+    return available(set(columns) if columns else None)
 
 
 def own_analysis(store: Store, request_id: str, user: User):
@@ -49,11 +57,16 @@ def datasets(request: Request, user: User = Depends(require_role("policy")), sto
 
 
 def form_page(request: Request, user: User, store: Store, values: dict, error: str | None = None, status_code: int = 200):
+    runs = ready_runs(store)
+    run_ids = [r["run_id"] for r in runs]
+    run_id = values.get("run_id") if values.get("run_id") in run_ids else (run_ids[0] if run_ids else None)
+    catalog = run_templates(request, run_id)
     context = {
         "user": user,
-        "runs": ready_runs(store),
-        "catalog": CATALOG,
-        "scenario": CATALOG.get(values.get("scenario")) or next(iter(CATALOG.values())),
+        "runs": runs,
+        "run_id": run_id,
+        "catalog": catalog,
+        "scenario": catalog.get(values.get("scenario")) or next(iter(catalog.values())),
         "values": values,
         "error": error,
     }
@@ -83,6 +96,8 @@ async def create_analysis(request: Request, user: User = Depends(require_role("p
         return form_page(request, user, store, values, ERRORS["unknown_scenario"], 422)
     if values.get("run_id") not in run_ids:
         return form_page(request, user, store, values, ERRORS["run_not_ready"], 422)
+    if scenario.key not in run_templates(request, values["run_id"]):
+        return form_page(request, user, store, values, ERRORS["template_unavailable"], 422)
     try:
         params = clean_params(scenario, values)
     except InvalidParams as e:

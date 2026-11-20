@@ -108,3 +108,10 @@ class LambdaBackend:
         if resp.get("FunctionError"):
             return {"error": "lambda_error", "detail": body.get("errorMessage", "")}
         return body
+
+    def columns(self, run_id: str) -> list[str] | None:
+        try:
+            return self.submit({"action": "columns", "run_id": run_id}).get("columns")
+        except Exception:
+            # if the lookup fails the form still works with the base templates
+            return None

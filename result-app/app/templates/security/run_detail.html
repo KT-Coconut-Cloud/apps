@@ -77,6 +77,9 @@
   <h2 class="rv-section-title">Macie 검사</h2>
   {% if run.macie %}
   <p class="rv-note">검사 일시 {{ run.macie.scanned_at | dt }}</p>
+  {% if run.macie.failed %}
+  <p class="rv-note rv-danger">검사를 마치지 못했습니다. 탐지 여부와 관계없이 전체 파일을 격리 버킷에 보관했습니다.{% if run.macie.error %} (사유: <span class="rv-mono">{{ run.macie.error }}</span>){% endif %}</p>
+  {% endif %}
   <div class="krds-table-wrap">
     <table class="tbl col data">
       <caption>파일별 민감정보 탐지 여부, 탐지 유형, 이동 위치</caption>
@@ -85,7 +88,7 @@
         {% for f in run.macie.files %}
         <tr>
           <th scope="row" class="rv-mono">{{ f.key }}</th>
-          <td>{% if f.detected %}<span class="rv-badge fail">탐지</span>{% else %}<span class="rv-badge ok">없음</span>{% endif %}</td>
+          <td>{% if run.macie.failed %}-{% elif f.detected %}<span class="rv-badge fail">탐지</span>{% else %}<span class="rv-badge ok">없음</span>{% endif %}</td>
           <td>{% for t in f.types %}{{ MACIE_TYPE_LABELS.get(t, t) }}{% if not loop.last %}, {% endif %}{% else %}-{% endfor %}</td>
           <td>{% if f.classification == 'quarantine' %}<span class="rv-badge warn">격리 버킷</span>{% else %}정제 버킷{% endif %}</td>
         </tr>

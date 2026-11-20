@@ -8,12 +8,12 @@
       "item": "direct_identifier",
       "passed": false,
       "value": 1,
-      "reason": "crisis_signal.contact_phone 컬럼이 삭제되지 않음"
+      "reason": "livelihood_payment.phone 컬럼이 삭제되지 않음"
     },
     {
       "item": "generalization",
       "passed": true,
-      "value": "주소 시군구, 생년 5세 구간",
+      "value": "주소 시도, 연령 10세 구간",
       "reason": null
     },
     {
