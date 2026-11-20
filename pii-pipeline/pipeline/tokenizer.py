@@ -43,7 +43,8 @@ class VaultTokenizer:
         self.transit_mount = transit_mount
         self.timeout = timeout
         if not verify_tls:
-            self.ssl = ssl._create_unverified_context()
+            # verify_tls: false is only for a self-signed Vault in test setups
+            self.ssl = ssl._create_unverified_context()  # nosemgrep: python.lang.security.unverified-ssl-context.unverified-ssl-context
         else:
             self.ssl = ssl.create_default_context(cafile=ca_cert or None)
         self.token = token or self._login(role, auth_mount, sa_token_path)
