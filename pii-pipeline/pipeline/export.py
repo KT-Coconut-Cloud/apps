@@ -26,6 +26,7 @@ def run(rules: Rules, out_dir: Path, review: dict, bucket: str, s3) -> dict:
             body = (Path(out_dir) / table.filename).read_bytes()
             key = base + table.filename
             s3.put_object(Bucket=bucket, Key=key, Body=body, ContentType="text/csv")
+            #CSV 전체 개행 수에서 헤더 1행을 제외해 데이터 행 수 계산. 마지막 개행이 없는 CSV의 행 수는 별도 확인 필
             files.append({"key": key, "rows": max(body.count(b"\n") - 1, 0), "sha256": hashlib.sha256(body).hexdigest()})
             log.info("uploaded %s", key)
     else:
