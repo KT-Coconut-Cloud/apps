@@ -15,6 +15,10 @@ class ExportRecord(BaseModel):
     executed_at: datetime
     status: Literal["exported", "aborted"]
     files: list[ExportFile] = []
+    # set only when the run stopped before the review (uploaded by the workflow exit handler)
+    failed_stage: Literal["pseudonymize", "review"] | None = None
+    rules_version: str | None = None
+    reasons: list[str] = []
 
 
 class AdequacyCheck(BaseModel):

@@ -28,8 +28,25 @@
   {% endfor %}
 </ol>
 
+{% if run.stopped_early %}
+<section class="rv-section">
+  <h2 class="rv-section-title">{{ steps[run.failed_step] }} 실패</h2>
+  <p class="rv-note">기록 일시 {{ run.export.executed_at | dt }}. 행 번호와 컬럼 이름만 남기고 값은 기록하지 않습니다.</p>
+  <div class="krds-table-wrap">
+    <table class="tbl col data">
+      <caption>{{ steps[run.failed_step] }} 단계 실패 사유</caption>
+      <thead><tr><th scope="col">사유</th></tr></thead>
+      <tbody>
+        {% for r in run.export.reasons %}<tr><td class="rv-mono">{{ r }}</td></tr>{% else %}<tr><td>-</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
 <section class="rv-section">
   <h2 class="rv-section-title">적정성 검토</h2>
+  {% if run.review %}
   <p class="rv-note">검토 일시 {{ run.review.reviewed_at | dt }}</p>
   <div class="krds-table-wrap">
     <table class="tbl col data">
@@ -47,11 +64,14 @@
       </tbody>
     </table>
   </div>
+  {% else %}
+  <div class="rv-empty">{{ steps[run.failed_step] }}에서 중단되어 적정성 검토를 하지 않았습니다.</div>
+  {% endif %}
 </section>
 
 <section class="rv-section">
   <h2 class="rv-section-title">반출 기록</h2>
-  {% if run.export %}
+  {% if run.exported %}
   <p class="rv-note">반출 일시 {{ run.export.executed_at | dt }}</p>
   <div class="krds-table-wrap">
     <table class="tbl col data">
@@ -68,8 +88,10 @@
       </tbody>
     </table>
   </div>
+  {% elif run.failed_step is not none and run.failed_step < 2 %}
+  <div class="rv-empty">{{ steps[run.failed_step] }}에서 중단되어 반출하지 않았습니다.</div>
   {% else %}
-  <div class="rv-empty">적정성 검토에서 중단되어 반출하지 않았습니다.</div>
+  <div class="rv-empty">반출 기록이 아직 없습니다.</div>
   {% endif %}
 </section>
 
@@ -97,7 +119,7 @@
     </table>
   </div>
   {% else %}
-  <div class="rv-empty">{% if run.export %}Macie 검사 기록이 아직 없습니다.{% else %}반출하지 않아 검사 대상이 없습니다.{% endif %}</div>
+  <div class="rv-empty">{% if run.exported %}Macie 검사 기록이 아직 없습니다.{% else %}반출하지 않아 검사 대상이 없습니다.{% endif %}</div>
   {% endif %}
 </section>
 {% endif %}

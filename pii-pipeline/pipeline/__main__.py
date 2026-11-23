@@ -6,7 +6,7 @@ import re
 import sys
 from pathlib import Path
 
-from pipeline import events, export, leakcheck, pseudonymize, review, tokenizer
+from pipeline import events, export, failure, leakcheck, pseudonymize, review, tokenizer
 from pipeline.rules import InvalidRules, load_rules
 
 RUN_ID = re.compile(r"^\d{8}-\d{2}$")
@@ -27,6 +27,9 @@ def main(argv=None) -> int:
     # the workflow passes RUN_ID to every step; --run-id is kept for local runs
     s.add_argument("--run-id", default=os.environ.get("RUN_ID"))
     s = sub.add_parser("export")
+    s.add_argument("--bucket", default=os.environ.get("LANDING_BUCKET"))
+    s = sub.add_parser("report-failure")
+    s.add_argument("--run-id", default=os.environ.get("RUN_ID"))
     s.add_argument("--bucket", default=os.environ.get("LANDING_BUCKET"))
     s = sub.add_parser("leakcheck")
     s.add_argument("--raw-dir", type=Path, required=True)
@@ -50,6 +53,9 @@ def main(argv=None) -> int:
             counts = pseudonymize.run(rules, out_dir, tokenizer.from_profile(rules.vault_profile), args.source_dir)
         except (pseudonymize.TransformError, tokenizer.TokenizerError) as e:
             print(f"pseudonymize failed, nothing written: {e}", file=sys.stderr)
+            # Vault errors can echo a response body, so only the category goes in the record
+            reasons = str(e).splitlines() if isinstance(e, pseudonymize.TransformError) else ["Vault 토큰화 실패"]
+            failure.write_note(args.work, reasons)
             events.emit("pseudonymize", "failed", 0)
             return 1
         events.emit("pseudonymize", "success", sum(counts.values()))
@@ -92,6 +98,21 @@ def main(argv=None) -> int:
             return 2
         events.emit("export", "success", rows, run_id=record["run_id"])
         print(f"exported {len(record['files'])} file(s) for run {record['run_id']}")
+        return 0
+
+    if args.command == "report-failure":
+        import boto3
+
+        if not args.run_id or not RUN_ID.match(args.run_id):
+            print("run id must look like 20261117-01", file=sys.stderr)
+            return 1
+        if not args.bucket:
+            print("LANDING_BUCKET is not set", file=sys.stderr)
+            return 1
+        s3 = boto3.client("s3", endpoint_url=os.environ.get("S3_ENDPOINT_URL") or None)
+        record = failure.run(args.work, args.run_id, f"{rules.scenario} v{rules.version}", args.bucket, s3)
+        if record:
+            print(f"failure record uploaded for run {args.run_id}: {record['failed_stage']}")
         return 0
 
     if args.command == "leakcheck":

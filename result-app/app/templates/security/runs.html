@@ -10,6 +10,7 @@
 <ul class="rv-stats">
   <li><span>전체 회차</span><strong>{{ runs | length }}</strong></li>
   <li><span>반출 완료</span><strong>{{ counts.get('반출 완료', 0) }}</strong></li>
+  <li><span>가명처리 중단</span><strong class="rv-danger">{{ counts.get('가명처리 중단', 0) }}</strong></li>
   <li><span>검토 중단</span><strong class="rv-danger">{{ counts.get('중단', 0) }}</strong></li>
   <li><span>Macie 격리</span><strong class="rv-warning">{{ counts.get('격리', 0) }}</strong></li>
   <li><span>검증 오류</span><strong class="rv-danger">{{ counts.get('검증 오류', 0) }}</strong></li>
