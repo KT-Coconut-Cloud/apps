@@ -21,12 +21,17 @@ def read_output(out_dir: Path, table: Table) -> tuple[list[str], list[dict]]:
 def run(rules: Rules, out_dir: Path, run_id: str) -> dict:
     found = {item: [] for item in validate.ITEMS}
     rows_total = 0
+    file_findings = []
     for table in rules.tables.values():
         header, rows = read_output(out_dir, table)
         rows_total += len(rows)
+        checks_for_table, details = validate.output_findings(table, header, rows)
         if table.validation.get("preserve_row_count") and not rows:
             found["completeness"].append(f"{table.name}: 출력 행 없음")
-        for item, problems in validate.output_checks(table, header, rows).items():
+            details.append({"check": "completeness", "code": "empty_output",
+                            "column": None, "pattern": None, "indices": None})
+        file_findings.append((table.name, details))
+        for item, problems in checks_for_table.items():
             found[item] += problems
 
     checks = [
@@ -47,4 +52,5 @@ def run(rules: Rules, out_dir: Path, run_id: str) -> dict:
         "passed": all(c["passed"] for c in checks),
         "checks": checks,
         "problems": [p for ps in found.values() for p in ps],
+        "statistics": validate.summarize_findings(rows_total, file_findings),
     }
