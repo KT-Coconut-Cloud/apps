@@ -1,3 +1,5 @@
+import json
+
 def test_policy_lists_ready_runs(policy):
     text = policy.get("/policy/datasets").text
     assert "20261112-01" in text and "20261109-01" in text
@@ -59,3 +61,34 @@ def test_failures_filters_by_date(security):
 def test_failures_partial_for_htmx(security):
     res = security.get("/security/failures?start=2026-11-09&end=2026-11-12", headers={"HX-Request": "true"})
     assert "<html" not in res.text and "규칙 버전별 결과" in res.text
+
+
+def add_pseudonymize_failure(data_dir, run_id="20261114-01"):
+    base = data_dir / "reports" / f"run_id={run_id}"
+    base.mkdir(parents=True)
+    (base / "export_record.json").write_text(json.dumps({
+        "run_id": run_id,
+        "executed_at": "2026-11-14T10:00:00+09:00",
+        "status": "aborted",
+        "failed_stage": "pseudonymize",
+        "rules_version": "benefit_review v3.1",
+        "reasons": ["benefit_review_joined: input column not in the rules ['memo']"],
+        "files": [],
+    }, ensure_ascii=False), encoding="utf-8")
+
+
+def test_pseudonymize_failure_is_listed(security, data_dir):
+    add_pseudonymize_failure(data_dir)
+    text = security.get("/security/runs").text
+    assert "가명처리에서 중단" in text and "가명처리 중단" in text
+    detail = security.get("/security/runs/20261114-01").text
+    assert "가명처리 실패" in detail and "memo" in detail
+    assert "가명처리에서 중단되어 적정성 검토를 하지 않았습니다" in detail
+    assert "가명처리에서 중단되어 반출하지 않았습니다" in detail
+    assert "반출하지 않아 검사 대상이 없습니다" in detail
+
+
+def test_pseudonymize_failure_counts_as_reason(security, data_dir):
+    add_pseudonymize_failure(data_dir)
+    text = security.get("/security/failures?start=&end=").text
+    assert "가명처리 실패" in text

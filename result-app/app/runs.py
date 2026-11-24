@@ -6,6 +6,7 @@ from app.reports import AdequacyReview, ExportRecord, MacieResult
 from app.storage import Store
 
 STEPS = ["가명처리", "적정성 검토", "반출", "Macie 검사", "정제 버킷 적재"]
+STAGE_INDEX = {"pseudonymize": 0, "review": 1}
 
 
 @dataclass
@@ -17,8 +18,15 @@ class RunSummary:
     broken: bool = False
 
     @property
+    def stopped_early(self) -> bool:
+        """Stopped before the review was written; only the failure record exists."""
+        return self.review is None and self.export is not None and self.export.failed_stage is not None
+
+    @property
     def reached(self) -> int:
         """Index of the last completed step (0-based), -1 if nothing is known."""
+        if self.stopped_early:
+            return STAGE_INDEX[self.export.failed_stage] - 1
         if self.review is None:
             return -1
         if not self.review.passed:
@@ -39,7 +47,7 @@ class RunSummary:
             return "반출 완료"
         if self.reached == 3:
             return "검증 오류" if self.macie.failed else "격리"
-        if self.reached in (0, 1):
+        if self.reached in (0, 1) or self.stopped_early:
             return "중단"
         return "진행 중"
 
@@ -63,7 +71,13 @@ class RunSummary:
 
     @property
     def rules_version(self) -> str | None:
-        return self.review.rules_version if self.review else None
+        if self.review:
+            return self.review.rules_version
+        return self.export.rules_version if self.export else None
+
+    @property
+    def exported(self) -> bool:
+        return self.export is not None and self.export.status == "exported"
 
     @property
     def executed_at(self):

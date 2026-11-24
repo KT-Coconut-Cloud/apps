@@ -21,7 +21,7 @@ def reports_store(request: Request) -> Store:
 @router.get("/runs")
 def runs(request: Request, user: User = Depends(require_role("security")), store: Store = Depends(reports_store)):
     items = load_runs(store)
-    counts = Counter(r.status for r in items)
+    counts = Counter("가명처리 중단" if r.failed_step == 0 else r.status for r in items)
     return templates.TemplateResponse(
         request, "security/runs.html", {"user": user, "runs": items, "counts": counts, "steps": STEPS}
     )
@@ -36,7 +36,7 @@ def run_detail(
     except InvalidId:
         raise HTTPException(404)
     run = load_run(store, run_id)
-    if run.review is None and not run.broken:
+    if run.review is None and not run.broken and not run.stopped_early:
         raise HTTPException(404)
     return templates.TemplateResponse(request, "security/run_detail.html", {"user": user, "run": run, "steps": STEPS})
 
@@ -84,6 +84,8 @@ def failures(
         row["runs"] += 1
         row["aborted"] += run.status == "중단"
         row["quarantined"] += run.status == "격리"
+        if run.stopped_early:
+            reasons[f"{STEPS[run.failed_step]} 실패"] += 1
         if run.review and not run.review.passed:
             for check in run.review.checks:
                 if not check.passed:
