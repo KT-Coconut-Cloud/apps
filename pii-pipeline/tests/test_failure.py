@@ -14,8 +14,10 @@ RUN = "20261124-91"
 
 @pytest.fixture
 def s3(monkeypatch):
-    for k, v in {"AWS_ACCESS_KEY_ID": "x", "AWS_SECRET_ACCESS_KEY": "x", "AWS_DEFAULT_REGION": "ap-northeast-2"}.items():
+    for k, v in {"AWS_ACCESS_KEY_ID": "x", "AWS_SECRET_ACCESS_KEY": "x", "AWS_DEFAULT_REGION": "ap-northeast-2",
+                 "PII_HMAC_KEY": "local"}.items():
         monkeypatch.setenv(k, v)
+    monkeypatch.delenv("VAULT_ADDR", raising=False)
     with mock_aws():
         client = boto3.client("s3")
         client.create_bucket(Bucket=BUCKET, CreateBucketConfiguration={"LocationConstraint": "ap-northeast-2"})
